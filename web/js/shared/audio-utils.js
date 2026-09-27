@@ -1,0 +1,144 @@
+// Découpage de la parole (VAD par énergie) et encodage WAV, sans dépendance.
+// Whisper transcrit des segments : on coupe aux pauses, on envoie phrase par phrase.
+
+export const TARGET_RATE = 16000;
+
+// Rééchantillonnage linéaire vers 16 kHz (le navigateur capte souvent en 48 kHz).
+export function resample(input, fromRate, toRate = TARGET_RATE) {
+  if (fromRate === toRate) return Float32Array.from(input);
+  const ratio = fromRate / toRate;
+  const length = Math.floor(input.length / ratio);
+  const out = new Float32Array(length);
+  for (let i = 0; i < length; i++) {
+    const pos = i * ratio;
+    const i0 = Math.floor(pos);
+    const i1 = Math.min(i0 + 1, input.length - 1);
+    const t = pos - i0;
+    out[i] = input[i0] * (1 - t) + input[i1] * t;
+  }
+  return out;
+}
+
+export function rms(frame) {
+  let sum = 0;
+  for (let i = 0; i < frame.length; i++) sum += frame[i] * frame[i];
+  return Math.sqrt(sum / (frame.length || 1));
+}
+
+export function encodeWav(samples, rate = TARGET_RATE) {
+  const buffer = new ArrayBuffer(44 + samples.length * 2);
+  const view = new DataView(buffer);
+  const str = (off, s) => { for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i)); };
+  str(0, 'RIFF');
+  view.setUint32(4, 36 + samples.length * 2, true);
+  str(8, 'WAVE');
+  str(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); // PCM
+  view.setUint16(22, 1, true); // mono
+  view.setUint32(24, rate, true);
+  view.setUint32(28, rate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  str(36, 'data');
+  view.setUint32(40, samples.length * 2, true);
+  for (let i = 0; i < samples.length; i++) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    view.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+  }
+  return new Uint8Array(buffer);
+}
+
+// Détecteur de parole à seuil adaptatif. On lui pousse des trames de 20 ms à 16 kHz ;
+// il appelle onSegment(samples) à la fin de chaque prise de parole.
+export class Vad {
+  constructor({
+    rate = TARGET_RATE,
+    frameMs = 20,
+    minThreshold = 0.012,
+    noiseFactor = 3.2,
+    startFrames = 3,
+    endSilenceMs = 850,
+    preRollMs = 300,
+    minSpeechMs = 450,
+    maxSegmentMs = 25000,
+    onSegment = () => {},
+    onSpeechStart = () => {},
+  } = {}) {
+    Object.assign(this, { rate, minThreshold, noiseFactor, startFrames, onSegment, onSpeechStart });
+    this.frameSize = Math.round((rate * frameMs) / 1000);
+    this.frameMs = frameMs;
+    this.endFrames = Math.ceil(endSilenceMs / frameMs);
+    this.preRollFrames = Math.ceil(preRollMs / frameMs);
+    this.minSpeechFrames = Math.ceil(minSpeechMs / frameMs);
+    this.maxFrames = Math.ceil(maxSegmentMs / frameMs);
+    this.noise = minThreshold / noiseFactor;
+    this.pending = new Float32Array(0);
+    this.reset();
+  }
+
+  reset() {
+    this.speaking = false;
+    this.loudRun = 0;
+    this.silentRun = 0;
+    this.voicedFrames = 0;
+    this.frames = [];
+    this.preRoll = [];
+  }
+
+  get threshold() {
+    return Math.max(this.minThreshold, this.noise * this.noiseFactor);
+  }
+
+  // Accepte des échantillons de n'importe quelle longueur.
+  push(samples) {
+    const merged = new Float32Array(this.pending.length + samples.length);
+    merged.set(this.pending);
+    merged.set(samples, this.pending.length);
+    let off = 0;
+    let level = 0;
+    while (off + this.frameSize <= merged.length) {
+      level = this.frame(merged.subarray(off, off + this.frameSize));
+      off += this.frameSize;
+    }
+    this.pending = merged.slice(off);
+    return level;
+  }
+
+  frame(frame) {
+    const copy = Float32Array.from(frame);
+    const level = rms(copy);
+    const loud = level > this.threshold;
+    if (!this.speaking) {
+      // Le bruit de fond n'est appris que hors parole.
+      this.noise = loud ? this.noise : this.noise * 0.95 + level * 0.05;
+      this.preRoll.push(copy);
+      if (this.preRoll.length > this.preRollFrames) this.preRoll.shift();
+      this.loudRun = loud ? this.loudRun + 1 : 0;
+      if (this.loudRun >= this.startFrames) {
+        this.speaking = true;
+        this.frames = [...this.preRoll];
+        this.voicedFrames = this.loudRun;
+        this.silentRun = 0;
+        this.onSpeechStart();
+      }
+      return level;
+    }
+    this.frames.push(copy);
+    if (loud) { this.voicedFrames++; this.silentRun = 0; } else this.silentRun++;
+    if (this.silentRun >= this.endFrames || this.frames.length >= this.maxFrames) this.flush();
+    return level;
+  }
+
+  flush() {
+    if (this.speaking && this.voicedFrames >= this.minSpeechFrames) {
+      // On retire la queue de silence, en gardant un peu d'air.
+      const keep = Math.max(0, this.frames.length - Math.max(0, this.silentRun - 10));
+      const frames = this.frames.slice(0, keep);
+      const out = new Float32Array(frames.length * this.frameSize);
+      frames.forEach((f, i) => out.set(f, i * this.frameSize));
+      this.onSegment(out);
+    }
+    this.reset();
+  }
+}

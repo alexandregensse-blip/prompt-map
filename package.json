@@ -1,0 +1,17 @@
+{
+  "name": "prompt-map",
+  "version": "0.1.0",
+  "description": "Construire des prompts de tâche pour Claude Code à l'oral, avec une carte heuristique live.",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server/index.js",
+    "demo": "node server/index.js --demo",
+    "test": "node --test test/*.test.js",
+    "whisper:install": "bash scripts/install-whisper.sh",
+    "whisper": "bash scripts/run-whisper.sh"
+  }
+}

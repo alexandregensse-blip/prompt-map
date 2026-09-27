@@ -1,0 +1,10 @@
+{
+  "port": 4317,
+  "llm": "auto",
+  "model": "",
+  "updateEffort": "low",
+  "exportEffort": "",
+  "whisperUrl": "http://127.0.0.1:8178/inference",
+  "language": "fr",
+  "openWindow": true
+}

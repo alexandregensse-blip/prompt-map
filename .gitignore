@@ -1,0 +1,4 @@
+node_modules/
+.whisper/
+prompt-map.config.json
+.DS_Store
