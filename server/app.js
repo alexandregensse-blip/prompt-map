@@ -90,6 +90,7 @@ export function createApp(cfg, providers, { log = console, tls = null } = {}) {
       claudeVersion: providers.claudeVersion,
       model: cfg.model || null,
       whisper: { url: cfg.whisperUrl, reachable: await whisperReachable(cfg) },
+      whisperLive: { url: cfg.whisperLiveUrl || null, reachable: await whisperReachable(cfg, cfg.whisperLiveUrl) },
       language: cfg.language,
     }),
     'GET /api/demo-script': async () => DEMO_SCENARIO.map(({ text, answer }) => ({ text, answer: answer || null })),
@@ -106,6 +107,18 @@ export function createApp(cfg, providers, { log = console, tls = null } = {}) {
       if (!body.demo && typeof body.sessionId === 'string') providers.main.warm?.(body.sessionId);
       return { ok: true };
     },
+    'POST /api/research': async (req) => {
+      const body = await readJson(req);
+      const session = checkSession(body.session);
+      const topic = typeof body.topic === 'string' ? body.topic.trim().slice(0, 300) : '';
+      if (!topic) throw Object.assign(new Error('Recherche vide'), { status: 400 });
+      const provider = pick(body);
+      if (!provider.research) throw Object.assign(new Error('Recherche indisponible'), { status: 501 });
+      const started = Date.now();
+      const result = await provider.research(session, topic);
+      log.info?.(`[recherche] « ${topic.slice(0, 60)} » · ${result.references.length} référence(s) · ${Date.now() - started} ms`);
+      return result;
+    },
     'POST /api/export': async (req) => {
       const body = await readJson(req);
       const session = checkSession(body.session);
@@ -120,8 +133,9 @@ export function createApp(cfg, providers, { log = console, tls = null } = {}) {
       const started = Date.now();
       let prompt = '';
       try { prompt = decodeURIComponent(req.headers['x-whisper-prompt'] || ''); } catch { /* en-tête illisible : ignoré */ }
-      const text = await transcribe(wav, cfg, { prompt });
-      log.info?.(`[stt] ${Date.now() - started} ms · « ${text.slice(0, 60)} »`);
+      const live = new URL(req.url, 'http://x').searchParams.get('live') === '1';
+      const text = await transcribe(wav, cfg, { prompt, live });
+      if (!live) log.info?.(`[stt] ${Date.now() - started} ms · « ${text.slice(0, 60)} »`);
       return { text };
     },
   };

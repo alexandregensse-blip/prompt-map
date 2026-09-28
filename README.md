@@ -121,8 +121,22 @@ Claude, il ne faut pas l'exposer à tout le réseau.
 
 ## Utilisation
 
-- **Parler** : bouton micro ou <kbd>Espace</kbd>. Le texte est découpé aux pauses et
-  transcrit phrase par phrase. **Écrire** : <kbd>/</kbd> puis <kbd>Entrée</kbd>.
+- **Parler** : bouton micro, ou <kbd>Espace</kbd> : appui maintenu pour parler tant qu'on
+  tient la touche (relâcher envoie), appui bref pour le micro continu. **Écrire** : <kbd>/</kbd>
+  puis <kbd>Entrée</kbd>.
+- **Direct** : `npm run whisper` lance aussi un petit Whisper (`tiny`, 1 cœur) qui affiche
+  les mots dans la bulle pendant qu'on parle ; le texte définitif vient du modèle principal.
+  Le direct se met en pause pendant la transcription d'un morceau définitif, pour ne jamais
+  la ralentir. Les deux serveurs adaptent leur fenêtre d'encodage à la durée de l'extrait
+  (`audio_ctx`), ce qui les rend 2 à 3 fois plus rapides sur quelques secondes.
+- **Recherche web** : faite par un **agent séparé**, lancé en parallèle, avec les seuls outils
+  `WebSearch` et `WebFetch`, sans rien partager avec l'agent de travail. Elle se lance d'un
+  bouton *Chercher* : sur une question « Recherche » proposée par l'agent, ou sur un nœud.
+  Elle part aussi toute seule quand tu la demandes à voix haute (« va chercher… »). Les
+  références et idées trouvées s'ajoutent à la carte en un clic (branches « Références » et
+  « Pistes de la recherche ») ; l'agent de travail ne voit que ce que tu ajoutes.
+- **Paroles parasites** : le micro capte tout ; c'est l'agent qui écarte ce qui n'a rien à
+  voir avec la tâche (autre conversation, télé, politesses).
 - **Carte** : molette ou pincement pour zoomer, glisser le fond pour se déplacer. Clic sur
   un nœud : son détail s'affiche, avec *Renommer* (ou double-clic, <kbd>Entrée</kbd>),
   *Ajouter* un point dessous (<kbd>Tab</kbd>), *Creuser* (demande à l'agent d'approfondir),
@@ -175,6 +189,7 @@ ou utiliser les variables d'environnement :
 | `PROMPTMAP_MODEL` | *(celui de ton Claude Code)* | modèle, ex. `opus`, `sonnet` |
 | `PROMPTMAP_UPDATE_EFFORT` | `low` | effort pour les mises à jour live (réactivité) |
 | `PROMPTMAP_EXPORT_EFFORT` | *(défaut du modèle)* | effort pour l'export final |
+| `PROMPTMAP_WHISPER_LIVE_URL` | `http://127.0.0.1:8179/inference` | petit Whisper du direct (`''` pour s'en passer) |
 | `PROMPTMAP_WHISPER_URL` | `http://127.0.0.1:8178/inference` | serveur whisper.cpp, ou tout serveur compatible OpenAI (`…/v1/audio/transcriptions`) |
 | `PROMPTMAP_LANGUAGE` | `fr` | langue de transcription |
 | `PROMPTMAP_PORT` | `4317` | port de l'interface |
@@ -199,8 +214,10 @@ session (localStorage) ─── état complet ▶ /api/export     ──▶ cla
   `remove`) sur des nœuds à ID stables, jamais une carte complète. Côté et couleur d'une
   branche sont figés à sa création : la carte ne « saute » pas. Rendu SVG maison
   (`web/js/map-view.js`), disposition pure et testée (`web/js/shared/layout.js`).
-- **Un seul appel par mise à jour** : carte, grille et suggestions dans la même réponse
-  JSON, validée par schéma (`server/llm/prompts.js`). Les mises à jour sont regroupées :
+- **Un seul appel par mise à jour, en différences** : dans la même réponse JSON, validée
+  par schéma (`server/llm/prompts.js`), les opérations sur la carte, les seules dimensions de
+  la grille qui changent (`grid_changes`) et les questions, ou `null` si elles ne changent
+  pas. Moins de texte produit, donc des réponses plus rapides. Les mises à jour sont regroupées :
   une seule en cours à la fois, la suivante part avec tout ce qui s'est dit entre-temps.
 - **Claude via la CLI Claude Code** (`claude -p`, sans outils, sans MCP) : utilise
   l'abonnement déjà connecté, sans clé API ni coût à l'usage.
@@ -229,7 +246,7 @@ session (localStorage) ─── état complet ▶ /api/export     ──▶ cla
 
 ## Tests
 
-`npm test` lance 64 tests (Node, sans dépendance, **sans appel à Claude**) : modèle de carte,
+`npm test` lance 67 tests (Node, sans dépendance, **sans appel à Claude**) : modèle de carte,
 disposition (aucun chevauchement), découpage audio et WAV, prompts et schéma, validation des
 réponses, chaîne CLI avec un faux binaire `claude` (appel ponctuel et conversation gardée
 ouverte : nouveautés seules, plantage et reprise, limite de longueur), mode démo, serveur HTTP (dont un faux

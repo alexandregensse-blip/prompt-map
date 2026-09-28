@@ -130,12 +130,21 @@ test('transcription : WAV relayé à whisper.cpp, texte nettoyé', async () => {
   assert.match(req.body, /name="language"\r\n\r\nfr/);
   assert.match(req.body, /name="response_format"\r\n\r\njson/);
   assert.match(req.body, /name="suppress_nst"\r\n\r\ntrue/);
+  assert.match(req.body, /name="audio_ctx"\r\n\r\n1\d\d\r\n/, 'fenêtre réduite pour 0,1 s d’audio');
   assert.match(Buffer.from(req.body, 'latin1').toString('utf8'), /name="prompt"\r\n\r\nVocabulaire : pdfkit, Express\./);
 });
 
 test('transcription : refuse ce qui n’est pas un WAV', async () => {
   const res = await fetch(`${base}/api/transcribe`, { method: 'POST', body: new Uint8Array(100) });
   assert.equal(res.status, 400);
+});
+
+test('fenêtre d’encodage Whisper ajustée à la durée', async () => {
+  const { audioContext } = await import('../server/stt/whisper.js');
+  assert.equal(audioContext(0), 128);
+  assert.equal(audioContext(8), 528);
+  assert.equal(audioContext(30), 1500);
+  assert.equal(audioContext(60), 1500);
 });
 
 test('nettoyage des hallucinations classiques de Whisper', () => {

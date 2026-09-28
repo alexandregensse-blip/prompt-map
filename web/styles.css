@@ -371,6 +371,8 @@ button.chip:hover { border-color: var(--muted); }
 .sugg.question { --kind: var(--accent); }
 .sugg.blind_spot { --kind: var(--warn); }
 .sugg.lead { --kind: var(--ok); }
+.sugg.search { --kind: var(--c6); }
+.sugg-actions button.search-btn { background: color-mix(in srgb, var(--c6) 14%, transparent); border-color: transparent; color: var(--c6); }
 .sugg-kind { font-size: 11px; font-weight: 700; color: var(--kind); text-transform: uppercase; letter-spacing: .05em; }
 .sugg { display: flex; flex-direction: column; }
 .sugg-text { margin: 4px 0 10px; font-size: 15px; line-height: 1.4; font-weight: 600; flex: 1; text-wrap: pretty; }
@@ -449,6 +451,32 @@ button.chip:hover { border-color: var(--muted); }
 .transcript li.pending { color: var(--muted); }
 .transcript li.pending::after { content: "…"; animation: blink 1s infinite; }
 .transcript .none { color: var(--muted); }
+
+/* Recherches web (agent séparé) */
+.research { display: grid; gap: 8px; margin-top: 10px; max-height: 42vh; overflow-y: auto; }
+.job { border: 1px solid var(--border); border-radius: 12px; background: var(--surface); padding: 10px 12px; }
+.job-head { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.job-head .topic { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.job-head .state { color: var(--muted); font-size: 12px; white-space: nowrap; display: flex; align-items: center; gap: 6px; }
+.job-head .state.error { color: var(--danger); }
+.job-head .close { border: 0; background: transparent; color: var(--muted); font-size: 15px; width: 24px; height: 24px; border-radius: 6px; }
+.job-head .close:hover { background: var(--surface-2); color: var(--ink); }
+.job ul { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.job li { display: grid; grid-template-columns: 1fr auto; column-gap: 10px; align-items: start; font-size: 13px; line-height: 1.4; }
+.job li a { color: var(--accent); font-weight: 600; text-decoration: none; }
+.job li a:hover { text-decoration: underline; }
+.job li .why { grid-column: 1; color: var(--muted); font-size: 12.5px; }
+.job li .host { color: var(--muted); font-weight: 400; font-size: 11.5px; margin-left: 6px; }
+.job li button {
+  grid-row: 1 / span 2; grid-column: 2; align-self: center;
+  border: 1px solid var(--border); background: transparent; border-radius: 7px;
+  padding: 3px 9px; font-size: 12px; font-weight: 600; color: var(--ink-2);
+}
+.job li button:hover { background: var(--surface-2); }
+.job li button:disabled { color: var(--ok); border-color: transparent; cursor: default; background: transparent; }
+.job li.idea { color: var(--ink-2); }
+.job-icon { width: 15px; height: 15px; flex: none; fill: none; stroke: var(--c6); stroke-width: 2.2; stroke-linecap: round; }
+.idea-tag { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--ok); }
 
 /* Questions mises de côté */
 .later { margin-top: 8px; }

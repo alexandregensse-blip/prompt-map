@@ -73,7 +73,8 @@ test('prochain id de suggestion : jamais un id déjà utilisé', () => {
 });
 
 test('schéma : toutes les dimensions, JSON sérialisable', () => {
-  assert.deepEqual(UPDATE_SCHEMA.properties.grid.required, DIMENSION_KEYS);
+  assert.deepEqual(Object.keys(UPDATE_SCHEMA.properties.grid_changes.properties), DIMENSION_KEYS);
+  assert.deepEqual(UPDATE_SCHEMA.required, ['ops', 'grid_changes', 'suggestions']);
   assert.doesNotThrow(() => JSON.parse(JSON.stringify(UPDATE_SCHEMA)));
   for (const key of DIMENSION_KEYS) assert.ok(UPDATE_SYSTEM.includes(key), key);
 });
@@ -97,6 +98,20 @@ test('normalisation : suggestions limitées, champs invalides corrigés', () => 
   assert.deepEqual(out.suggestions.map((s) => s.id), ['a', 'b', 'd']);
   assert.equal(out.suggestions[1].kind, 'question');
   assert.equal(out.suggestions[1].dimension, '');
+});
+
+test('réponse en différences : grille fusionnée, suggestions inchangées (null)', () => {
+  const prev = { ...emptyGrid(), contexte: { status: 'covered', summary: 'Repo existant.' } };
+  const out = normalizeUpdate({ ops: [], grid_changes: { perimetre: { status: 'partial', summary: 'Pas le paiement.' } }, suggestions: null }, prev);
+  assert.equal(out.grid.contexte.status, 'covered', 'dimension non renvoyée : inchangée');
+  assert.equal(out.grid.perimetre.summary, 'Pas le paiement.');
+  assert.equal(out.suggestions, null);
+  const search = normalizeUpdate({ grid_changes: {}, suggestions: [
+    { id: 's9', kind: 'search', text: 'exemples pdfkit facture', dimension: 'references', node: '', requested: true },
+    { id: 's10', kind: 'question', text: 'Q ?', dimension: '', node: '', requested: true },
+  ] }, prev);
+  assert.equal(search.suggestions[0].requested, true);
+  assert.equal(search.suggestions[1].requested, false, 'seule une recherche peut être « demandée »');
 });
 
 test('extraction JSON dans du texte ou un bloc de code', () => {
@@ -159,6 +174,22 @@ test('CLI : si --json-schema est refusé, bascule sur le JSON dans le texte', as
   const second = await llm.update(session({ segments: [{ text: 'Encore' }] }));
   assert.equal(second.suggestions[0].id, 's1');
   assert.equal(errors.length, 1, 'le mode sans schéma est mémorisé');
+});
+
+test('recherche : agent séparé, seuls les outils web, liens vérifiés', async (t) => {
+  const log = join(mkdtempSync(join(tmpdir(), 'pm-')), 'log.jsonl');
+  process.env.FAKE_CLAUDE_LOG = log;
+  t.after(() => { delete process.env.FAKE_CLAUDE_LOG; });
+  const llm = createClaudeCli({ claudeBin: FAKE_CLAUDE, timeoutMs: 10000 }, { log: { info() {}, error() {} } });
+  const res = await llm.research(session(), 'exemples de factures PDF avec pdfkit');
+  assert.deepEqual(res.references.map((r) => r.url), ['https://pdfkit.org/']);
+  assert.deepEqual(res.ideas, ['Utiliser les polices embarquées.']);
+  assert.equal(res.meta.mode, 'recherche');
+  const call = JSON.parse(readFileSync(log, 'utf8').trim().split('\n')[0]);
+  assert.equal(call.args[call.args.indexOf('--allowedTools') + 1], 'WebSearch,WebFetch');
+  assert.deepEqual(call.args.slice(-3), ['--tools', 'WebSearch', 'WebFetch']);
+  assert.match(call.input, /## Recherche demandée\nexemples de factures PDF avec pdfkit/);
+  assert.ok(!call.stream, 'processus ponctuel, hors de la conversation de travail');
 });
 
 test('démo : le scénario complet construit la carte attendue', async () => {

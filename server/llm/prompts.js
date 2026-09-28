@@ -4,7 +4,7 @@
 import { DIMENSIONS, DIMENSION_KEYS, STATUSES, STATUS_LABELS } from '../../web/js/shared/grid.js';
 import { toOutline, peekNextId } from '../../web/js/shared/map-model.js';
 
-export const SUGGESTION_KINDS = ['question', 'blind_spot', 'lead'];
+export const SUGGESTION_KINDS = ['question', 'blind_spot', 'lead', 'search'];
 
 const dimensionLines = DIMENSIONS.map((d) => `- ${d.key} (${d.label}) : ${d.hint}.`).join('\n');
 
@@ -24,6 +24,7 @@ La carte reflète la pensée de l'utilisateur : ses thèmes, avec ses mots. Ce n
 - Les branches principales (enfants de "root") sont ses grands thèmes : 3 à 7 au total, idéalement. Si un point relève d'un thème existant, range-le dessous plutôt que de créer une branche de plus.
 - "root" résume la tâche en quelques mots. Mets-le à jour (update, id "root") dès que l'intention se précise.
 - Quand l'utilisateur se reprend (« non, en fait… », « oublie ça », « plutôt… »), modifie ou supprime les nœuds concernés : la carte suit sa dernière version.
+- La transcription vient d'un micro ouvert : elle peut contenir des paroles sans rapport avec la tâche (quelqu'un d'autre qui parle, une télévision, un aparté, des politesses). Ignore-les : ni carte, ni grille, ni suggestion.
 - La transcription vient d'une reconnaissance vocale : corrige d'office les mots manifestement mal entendus, en particulier les termes techniques. Quand l'utilisateur corrige lui-même une phrase ou en retire une, mets la carte en accord avec sa version.
 - Les nœuds marqués « corrigé par l'utilisateur » ont été édités à la main : ne les renomme pas, ne les déplace pas, ne les supprime pas.
 - Ne recrée jamais un élément de la liste « supprimés par l'utilisateur ».
@@ -41,7 +42,7 @@ Format des opérations :
 Huit dimensions d'un bon prompt de tâche pour Claude Code :
 ${dimensionLines}
 
-Pour chacune, donne un statut et un résumé d'une phrase de ce qu'on sait (vide si absent) :
+Tu ne renvoies que les dimensions qui changent par rapport à la grille actuelle, dans "grid_changes" (objet vide si rien ne change). Pour chacune, un statut et un résumé d'une phrase de ce qu'on sait :
 - missing : rien de dit ;
 - partial : évoqué, mais trop flou pour que Claude Code agisse sans deviner ;
 - covered : assez clair pour agir ;
@@ -50,10 +51,11 @@ Juge sur l'ensemble de ce qui a été dit (carte et transcription), pas seulemen
 
 # 3. Les suggestions (visibles)
 
-0 à 3 suggestions, la plus utile d'abord. C'est la liste complète à afficher : elle remplace la précédente. Garde l'id d'une suggestion toujours valable (même texte ou presque) ; une nouvelle suggestion prend un nouvel id, à partir de celui indiqué (« prochain id de suggestion libre »).
+0 à 3 suggestions, la plus utile d'abord. Si les suggestions affichées restent les bonnes, renvoie null. Sinon, renvoie la liste complète à afficher : elle remplace la précédente. Garde l'id d'une suggestion toujours valable (même texte ou presque) ; une nouvelle suggestion prend un nouvel id, à partir de celui indiqué (« prochain id de suggestion libre »).
 - kind "question" : une information manque et Claude Code devrait deviner ;
 - kind "blind_spot" : un risque ou une contradiction que l'utilisateur n'a pas vu ;
-- kind "lead" : une piste d'approfondissement qui améliorerait nettement le résultat.
+- kind "lead" : une piste d'approfondissement qui améliorerait nettement le résultat ;
+- kind "search" : une recherche sur le web serait utile (références, documentation, exemples, bibliothèques). "text" est alors la recherche à faire, formulée précisément. Un autre agent s'en charge : tu ne cherches jamais toi-même. Mets "requested" à true si l'utilisateur vient de demander explicitement cette recherche (« va chercher… », « trouve-moi des exemples… ») : elle est alors lancée tout de suite. Sinon false : l'utilisateur décidera.
 Règles :
 - Priorité aux manques qui feraient dérailler Claude Code (objectif, périmètre, critère de fin), puis aux ambiguïtés et contradictions.
 - Une suggestion = une seule chose, 20 mots au plus, formulée pour qu'on y réponde à l'oral, en tutoyant.
@@ -61,19 +63,22 @@ Règles :
 - Les questions « mises de côté » restent ouvertes, mais l'utilisateur y répondra plus tard : ne les repose pas, ni sous une autre forme.
 - Si le dernier segment semble inachevé, l'utilisateur est en train de dérouler son idée : ne le noie pas, une suggestion au plus.
 - Rattache la suggestion à une dimension (clé de la grille) et, si pertinent, à un nœud (son id). Sinon, chaîne vide.
+- "requested" vaut false pour tout ce qui n'est pas une recherche demandée.
 
 # Format de la réponse
 
 Un seul objet JSON, sans texte autour :
 {"ops": [ …opérations… ],
- "grid": { ${DIMENSION_KEYS.map((k) => `"${k}": {"status": "…", "summary": "…"}`).join(', ')} },
- "suggestions": [ {"id": "s4", "kind": "question", "text": "…", "dimension": "perimetre", "node": "n3"} ]}
-Les huit clés de "grid" sont toujours présentes.`;
+ "grid_changes": { "perimetre": {"status": "partial", "summary": "…"} },
+ "suggestions": null }
+ou, si les suggestions changent :
+ "suggestions": [ {"id": "s4", "kind": "question", "text": "…", "dimension": "perimetre", "node": "n3", "requested": false} ]
+Clés possibles de "grid_changes" : ${DIMENSION_KEYS.join(', ')}.`;
 
 export const UPDATE_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['ops', 'grid', 'suggestions'],
+  required: ['ops', 'grid_changes', 'suggestions'],
   properties: {
     ops: {
       type: 'array',
@@ -90,10 +95,9 @@ export const UPDATE_SCHEMA = {
         },
       },
     },
-    grid: {
+    grid_changes: {
       type: 'object',
       additionalProperties: false,
-      required: DIMENSION_KEYS,
       properties: Object.fromEntries(DIMENSION_KEYS.map((k) => [k, {
         type: 'object',
         additionalProperties: false,
@@ -105,20 +109,26 @@ export const UPDATE_SCHEMA = {
       }])),
     },
     suggestions: {
-      type: 'array',
-      maxItems: 3,
-      items: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['id', 'kind', 'text', 'dimension', 'node'],
-        properties: {
-          id: { type: 'string' },
-          kind: { type: 'string', enum: SUGGESTION_KINDS },
-          text: { type: 'string' },
-          dimension: { type: 'string', enum: [...DIMENSION_KEYS, ''] },
-          node: { type: 'string' },
+      anyOf: [
+        { type: 'null' },
+        {
+          type: 'array',
+          maxItems: 3,
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['id', 'kind', 'text', 'dimension', 'node', 'requested'],
+            properties: {
+              id: { type: 'string' },
+              kind: { type: 'string', enum: SUGGESTION_KINDS },
+              text: { type: 'string' },
+              dimension: { type: 'string', enum: [...DIMENSION_KEYS, ''] },
+              node: { type: 'string' },
+              requested: { type: 'boolean' },
+            },
+          },
         },
-      },
+      ],
     },
   },
 };
@@ -214,6 +224,43 @@ export function buildDeltaMessage(session, seen) {
   parts.push(`Prochain id libre : ${peekNextId(map)} · Prochain id de suggestion libre : ${nextSuggestionId(suggestions, usedSuggestionIds)}`);
   parts.push('Mets à jour la carte, la grille et les suggestions.');
   return parts.join('\n\n');
+}
+
+// ---------- Agent de recherche (parallèle, séparé de l'agent de travail) ----------
+
+export const RESEARCH_SYSTEM = `Tu es l'agent de recherche de prompt-map. Un utilisateur prépare une tâche pour Claude Code ; tu reçois le contexte de sa tâche et une recherche à faire. Tu cherches sur le web avec WebSearch, et tu vérifies avec WebFetch une page dont tu n'es pas sûr.
+
+Ce que tu rends :
+- 3 à 6 références vraiment utiles pour cette tâche : documentation officielle, exemples de code, bibliothèques, articles solides et récents. Pas de pages génériques ni de contenus sponsorisés.
+- Pour chacune : un titre court, l'URL exacte (jamais inventée, toujours issue de tes recherches), et en une phrase pourquoi elle aide pour cette tâche précise.
+- 0 à 3 idées concrètes tirées de ta recherche (une bibliothèque adaptée, un piège connu, une bonne pratique), une phrase chacune.
+Écris en français. Réponds uniquement avec l'objet JSON demandé.`;
+
+export const RESEARCH_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['references', 'ideas'],
+  properties: {
+    references: {
+      type: 'array',
+      maxItems: 8,
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['title', 'url', 'why'],
+        properties: { title: { type: 'string' }, url: { type: 'string' }, why: { type: 'string' } },
+      },
+    },
+    ideas: { type: 'array', maxItems: 3, items: { type: 'string' } },
+  },
+};
+
+export function buildResearchMessage(session, topic) {
+  return [
+    `## Tâche en préparation (carte actuelle)\n${toOutline(session.map)}`,
+    `## Recherche demandée\n${topic}`,
+    'Fais la recherche et rends les références.',
+  ].join('\n\n');
 }
 
 export const EXPORT_SYSTEM = `Tu rédiges le prompt de tâche final qu'un utilisateur va donner à Claude Code (un agent de développement logiciel qui travaille dans son dépôt). Tu reçois la carte heuristique construite pendant qu'il décrivait sa tâche à l'oral, la grille d'analyse et la transcription complète.

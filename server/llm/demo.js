@@ -96,6 +96,20 @@ export function createDemo() {
       await new Promise((r) => setTimeout(r, 350));
       return { ops, grid, suggestions, meta: DEMO_META };
     },
+    // Recherche simulée : des liens de recherche réels, clairement présentés comme des exemples.
+    async research(session, topic) {
+      await new Promise((r) => setTimeout(r, 1500));
+      const q = encodeURIComponent(topic);
+      return {
+        references: [
+          { title: `MDN : ${topic}`, url: `https://developer.mozilla.org/fr/search?q=${q}`, why: 'Exemple de résultat (mode démo, sans recherche réelle).' },
+          { title: `npm : ${topic}`, url: `https://www.npmjs.com/search?q=${q}`, why: 'Exemple de résultat (mode démo, sans recherche réelle).' },
+          { title: `GitHub : ${topic}`, url: `https://github.com/search?q=${q}&type=repositories`, why: 'Exemple de résultat (mode démo, sans recherche réelle).' },
+        ],
+        ideas: ['En mode démo, aucune recherche n’est faite : ces liens sont des exemples.'],
+        meta: DEMO_META,
+      };
+    },
     async export(session) {
       return { prompt: draftExport(session), meta: DEMO_META };
     },

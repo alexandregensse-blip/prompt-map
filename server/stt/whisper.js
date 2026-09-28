@@ -37,38 +37,52 @@ export function isOpenAiStyle(url) {
   return /\/v1\/audio\/transcriptions\/?$/.test(new URL(url).pathname);
 }
 
+// Durée d'un WAV PCM 16 bits mono 16 kHz, d'après sa taille.
+export function wavSeconds(wav) {
+  return Math.max(0, (wav.length - 44) / 32000);
+}
+
+// Fenêtre d'encodage ajustée à la durée (whisper.cpp encode 30 s par défaut) : 2 à 3 fois plus
+// rapide sur un morceau de quelques secondes, avec une marge pour ne rien couper.
+export function audioContext(seconds) {
+  return Math.min(1500, Math.ceil((seconds / 30) * 1500) + 128);
+}
+
 // prompt : indice de vocabulaire (termes de la carte, phrase précédente) pour que Whisper
 // reconnaisse mieux les noms propres et les termes techniques.
-export async function transcribe(wav, cfg, { prompt = '' } = {}) {
+// live : transcription provisoire, envoyée au petit serveur dédié s'il existe.
+export async function transcribe(wav, cfg, { prompt = '', live = false } = {}) {
+  const url = live && cfg.whisperLiveUrl ? cfg.whisperLiveUrl : cfg.whisperUrl;
   const form = new FormData();
   form.append('file', new Blob([wav], { type: 'audio/wav' }), 'segment.wav');
   form.append('response_format', 'json');
   form.append('language', cfg.language);
   if (prompt) form.append('prompt', prompt.slice(0, 800));
-  if (isOpenAiStyle(cfg.whisperUrl)) {
+  if (isOpenAiStyle(url)) {
     form.append('model', cfg.whisperModel || 'whisper-1');
   } else {
     form.append('temperature', '0.0');
     // whisper.cpp : pas de jetons « non-parole » ([Musique], (Rires)…).
     form.append('suppress_nst', 'true');
+    form.append('audio_ctx', String(audioContext(wavSeconds(wav))));
   }
   let res;
   try {
-    res = await fetch(cfg.whisperUrl, { method: 'POST', body: form, signal: AbortSignal.timeout(60000) });
+    res = await fetch(url, { method: 'POST', body: form, signal: AbortSignal.timeout(live ? 10000 : 60000) });
   } catch (err) {
     throw new Error(err.name === 'TimeoutError'
-      ? 'Whisper n’a pas répondu en 60 s'
-      : `Whisper injoignable (${cfg.whisperUrl}). Lance « npm run whisper »`);
+      ? `Whisper n’a pas répondu en ${live ? 10 : 60} s`
+      : `Whisper injoignable (${url}). Lance « npm run whisper »`);
   }
   if (!res.ok) throw new Error(`Whisper a répondu ${res.status} ${res.statusText}`);
   const data = await res.json();
   return cleanTranscript(data.text);
 }
 
-export async function whisperReachable(cfg) {
-  if (!cfg.whisperUrl) return false;
+export async function whisperReachable(cfg, target = cfg.whisperUrl) {
+  if (!target) return false;
   try {
-    const url = new URL(cfg.whisperUrl);
+    const url = new URL(target);
     await fetch(url.origin, { signal: AbortSignal.timeout(1500) });
     return true;
   } catch {

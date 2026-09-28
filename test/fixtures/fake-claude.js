@@ -30,6 +30,16 @@ function respond(input) {
 }
 
 function answer(input) {
+  if (input.includes('## Recherche demandée')) {
+    const structured = {
+      references: [
+        { title: 'pdfkit', url: 'https://pdfkit.org/', why: 'Documentation officielle.' },
+        { title: 'Lien inventé', url: 'pas-une-url', why: 'Doit être écarté.' },
+      ],
+      ideas: ['Utiliser les polices embarquées.'],
+    };
+    return { type: 'result', subtype: 'success', is_error: false, result: '', structured_output: structured };
+  }
   if (input.includes('Rédige le prompt de tâche final')) {
     return { type: 'result', subtype: 'success', is_error: false, result: '```markdown\n# Prompt final\n\n## Objectif\nTest.\n```' };
   }

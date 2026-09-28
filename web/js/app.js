@@ -11,7 +11,7 @@ const INDEX_KEY = 'prompt-map:sessions';
 const CURRENT_KEY = 'prompt-map:current';
 const sessionKey = (id) => `prompt-map:s:${id}`;
 const DEFAULT_TITLE = 'Ton idée';
-const KIND_LABELS = { question: 'Question', blind_spot: 'Angle mort', lead: 'Piste' };
+const KIND_LABELS = { question: 'Question', blind_spot: 'Angle mort', lead: 'Piste', search: 'Recherche' };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const uid = () => Math.random().toString(36).slice(2, 10);
 
@@ -28,6 +28,7 @@ function newSession(demo = false) {
     segments: [],
     processedCount: 0,
     later: [], // questions mises de côté : { id, text, kind, dimension, node }
+    research: [], // recherches web : { id, topic, status, references, ideas, added, error }
     usage: { tokens: 0, calls: 0, last: null }, // consommation Claude de la session
     demo,
   };
@@ -38,7 +39,9 @@ function parseSession(raw) {
     const saved = JSON.parse(raw);
     if (saved?.map?.nodes?.[ROOT_ID] && Array.isArray(saved.segments)) {
       const hidden = (saved.hidden || []).map((h) => (typeof h === 'string' ? { id: h, text: '' } : h));
-      return { ...newSession(), ...saved, hidden, later: saved.later || [], usage: saved.usage || { tokens: 0, calls: 0, last: null } };
+      // Une recherche « en cours » au moment de la fermeture ne reviendra pas.
+      const research = (saved.research || []).map((j) => (j.status === 'running' ? { ...j, status: 'error', error: 'Interrompue' } : j));
+      return { ...newSession(), ...saved, hidden, research, later: saved.later || [], usage: saved.usage || { tokens: 0, calls: 0, last: null } };
     }
   } catch { /* entrée corrompue */ }
   return null;
@@ -153,6 +156,11 @@ toolbar.addEventListener('click', (e) => {
   if (!action || !id) return;
   if (action === 'rename') startRename(id);
   if (action === 'add') addChild(id);
+  if (action === 'search') {
+    const n = session.map.nodes[id];
+    launchResearch(n.detail ? `${n.label} : ${n.detail}` : n.label);
+    mapView.select(null);
+  }
   if (action === 'delete') deleteNode(id);
   if (action === 'focus') {
     addSegment({ text: 'Aide-moi à approfondir ce point.', focus: session.map.nodes[id].label });
@@ -278,9 +286,18 @@ async function runUpdate() {
     if (rejected.length) console.info('Opérations écartées', rejected);
     session.map = map;
     session.grid = res.grid;
-    // Masque une suggestion déjà traitée seulement si c'est bien la même (id et texte).
-    session.suggestions = res.suggestions.filter((s) => !session.hidden.some((h) => h.id === s.id && (!h.text || h.text === s.text)));
+    // null : l'agent garde les mêmes questions (on retire seulement celles déjà répondues).
+    // Sinon, on masque une suggestion déjà traitée si c'est bien la même (id et texte).
+    session.suggestions = res.suggestions === null
+      ? session.suggestions.filter((s) => !s.answered)
+      : res.suggestions.filter((s) => !session.hidden.some((h) => h.id === s.id && (!h.text || h.text === s.text)));
     session.processedCount = upto;
+    // Recherche explicitement demandée à voix haute : lancée tout de suite, sans carte.
+    for (const s of session.suggestions.filter((x) => x.kind === 'search' && x.requested)) {
+      session.hidden.push({ id: s.id, text: s.text });
+      launchResearch(s.text);
+    }
+    session.suggestions = session.suggestions.filter((x) => !(x.kind === 'search' && x.requested));
     recordUsage(res.meta);
     save();
     renderMap(changes);
@@ -408,7 +425,19 @@ function buildCard(s) {
   card.querySelector('.sugg-kind').textContent = KIND_LABELS[s.kind] || 'Question';
   card.querySelector('.sugg-text').textContent = s.text;
   card.querySelector('.dim').textContent = dim ? dim.label : '';
-  card.querySelector('.answer').addEventListener('click', () => setAnswering(answering?.id === s.id ? null : s));
+  if (s.kind === 'search') {
+    const btn = card.querySelector('.answer');
+    btn.textContent = 'Chercher';
+    btn.className = 'search-btn';
+    btn.title = 'Lancer cette recherche web (agent séparé)';
+    btn.addEventListener('click', () => {
+      session.hidden.push({ id: s.id, text: s.text });
+      session.suggestions = session.suggestions.filter((x) => x.id !== s.id);
+      launchResearch(s.text);
+    });
+  } else {
+    card.querySelector('.answer').addEventListener('click', () => setAnswering(answering?.id === s.id ? null : s));
+  }
   card.querySelector('.dismiss').addEventListener('click', () => {
     session.dismissed.push(s.text);
     session.hidden.push({ id: s.id, text: s.text });
@@ -428,6 +457,120 @@ function buildCard(s) {
   card.addEventListener('mouseenter', () => mapView.setLinked(s.node || null));
   card.addEventListener('mouseleave', () => mapView.setLinked(null));
   return card;
+}
+
+// ---------- Recherches web : un agent séparé, en parallèle ----------
+
+function launchResearch(topic) {
+  const clean = String(topic || '').trim();
+  if (!clean) return;
+  if (session.research.some((j) => j.topic === clean && j.status === 'running')) return;
+  const job = { id: uid(), topic: clean, status: 'running', startedAt: Date.now(), references: [], ideas: [], added: [] };
+  const owner = session;
+  session.research.unshift(job);
+  save();
+  renderSuggestions();
+  api.research(session, clean).then((res) => {
+    Object.assign(job, { status: 'done', references: res.references, ideas: res.ideas });
+    if (owner === session) recordUsage(res.meta);
+  }).catch((err) => {
+    Object.assign(job, { status: 'error', error: err.message });
+  }).finally(() => {
+    if (owner !== session) return;
+    save();
+    renderSuggestions();
+  });
+}
+
+// Une référence ou une idée rejoint la carte, sous une branche dédiée créée au besoin.
+function addFromResearch(branchLabel, label, detail) {
+  let branch = Object.values(session.map.nodes).find((n) => n.parent === ROOT_ID && n.label === branchLabel);
+  if (!branch) {
+    const changes = userOps([{ op: 'add', parent: ROOT_ID, label: branchLabel }]);
+    branch = session.map.nodes[changes.added[0]];
+  }
+  const changes = userOps([{ op: 'add', parent: branch.id, label: label.slice(0, 80), detail: detail.slice(0, 240) }]);
+  if (changes.added[0]) mapView.flash(changes.added[0]);
+}
+
+let researchTimer = null;
+function renderResearch() {
+  const box = $('research');
+  const jobs = session.research;
+  box.hidden = !jobs.length;
+  box.textContent = '';
+  clearInterval(researchTimer);
+  for (const job of jobs) {
+    const el = document.createElement('div');
+    el.className = 'job';
+    el.innerHTML = '<div class="job-head"><svg class="job-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg><span class="topic"></span><span class="state"></span><button type="button" class="close" title="Fermer">×</button></div>';
+    el.querySelector('.topic').textContent = job.topic;
+    const state = el.querySelector('.state');
+    if (job.status === 'running') {
+      state.innerHTML = '<span class="spinner"></span><span class="elapsed"></span>';
+      state.querySelector('.elapsed').dataset.since = job.startedAt;
+    } else if (job.status === 'error') {
+      state.classList.add('error');
+      state.textContent = `Échec : ${job.error}`;
+    } else {
+      state.textContent = `${job.references.length} référence${job.references.length > 1 ? 's' : ''}`;
+    }
+    el.querySelector('.close').addEventListener('click', () => {
+      session.research = session.research.filter((j) => j !== job);
+      save();
+      renderSuggestions();
+    });
+    if (job.status === 'done') {
+      const ul = document.createElement('ul');
+      for (const ref of job.references) {
+        const li = document.createElement('li');
+        li.innerHTML = '<span><a target="_blank" rel="noopener noreferrer"></a><span class="host"></span></span><span class="why"></span><button type="button">Ajouter</button>';
+        const a = li.querySelector('a');
+        a.href = ref.url;
+        a.textContent = ref.title;
+        try { li.querySelector('.host').textContent = new URL(ref.url).hostname.replace(/^www\./, ''); } catch { /* lien déjà vérifié côté serveur */ }
+        li.querySelector('.why').textContent = ref.why;
+        const btn = li.querySelector('button');
+        const done = job.added.includes(ref.url);
+        btn.disabled = done;
+        btn.textContent = done ? '✓ Ajoutée' : 'Ajouter';
+        btn.title = 'Ajouter à la carte, sous « Références »';
+        btn.addEventListener('click', () => {
+          addFromResearch('Références', ref.title, `${ref.url} — ${ref.why}`);
+          job.added.push(ref.url);
+          save();
+          renderResearch();
+        });
+        ul.append(li);
+      }
+      for (const idea of job.ideas) {
+        const li = document.createElement('li');
+        li.className = 'idea';
+        li.innerHTML = '<span><b class="idea-tag">Idée</b> <span class="idea-text"></span></span><button type="button">Ajouter</button>';
+        li.querySelector('.idea-text').textContent = idea;
+        const btn = li.querySelector('button');
+        const done = job.added.includes(idea);
+        btn.disabled = done;
+        btn.textContent = done ? '✓ Ajoutée' : 'Ajouter';
+        btn.title = 'Ajouter à la carte, sous « Pistes de la recherche »';
+        btn.addEventListener('click', () => {
+          addFromResearch('Pistes de la recherche', idea.length > 60 ? `${idea.slice(0, 57)}…` : idea, idea);
+          job.added.push(idea);
+          save();
+          renderResearch();
+        });
+        ul.append(li);
+      }
+      el.append(ul);
+    }
+    box.append(el);
+  }
+  // Temps écoulé des recherches en cours.
+  if (jobs.some((j) => j.status === 'running')) {
+    const tick = () => box.querySelectorAll('.elapsed').forEach((e) => { e.textContent = `recherche… ${Math.round((Date.now() - Number(e.dataset.since)) / 1000)} s`; });
+    tick();
+    researchTimer = setInterval(tick, 1000);
+  }
 }
 
 // Pile des questions mises de côté : on y répond ou on les écarte quand on veut.
@@ -513,9 +656,10 @@ function renderSuggestions() {
   const box = $('suggestions');
   const list = session.suggestions;
   // Le bandeau n'apparaît que lorsqu'il y a des questions (ou des questions mises de côté).
-  $('questions').hidden = !list.length && !session.later.length;
+  $('questions').hidden = !list.length && !session.later.length && !session.research.length;
   $('suggestions').hidden = !list.length;
   renderLater();
+  renderResearch();
   const existing = new Map([...box.children].map((el) => [el.dataset.id, el]));
   list.forEach((s, i) => {
     let card = existing.get(s.id);
@@ -724,19 +868,22 @@ const mic = new MicCapture({
 });
 
 // Transcription provisoire du morceau en cours, affichée dans la bulle pendant qu'on parle.
-// Seulement si Whisper est assez rapide et libre : elle ne doit jamais retarder les morceaux définitifs.
+// Avec le petit serveur dédié (tiny) : toutes les ~0,9 s. Sinon, seulement si le Whisper principal
+// est assez rapide. Jamais pendant la transcription d'un morceau définitif : elle ne doit pas le retarder.
 setInterval(async () => {
-  if (!mic.speaking || interimBusy || pending.length || sttSpeed === null || sttSpeed > INTERIM_MAX_SPEED) return;
+  const live = Boolean(status.whisperLive?.reachable);
+  if (!mic.speaking || interimBusy || pending.length) return;
+  if (!live && (sttSpeed === null || sttSpeed > INTERIM_MAX_SPEED)) return;
   const wav = mic.currentWav();
   if (!wav) return;
   interimBusy = true;
   try {
-    const { text } = await api.transcribe(wav, whisperPrompt());
+    const { text } = await api.transcribe(wav, whisperPrompt(), { live });
     if (text && mic.speaking) showCaption(`${text} …`, true);
   } catch { /* le morceau définitif suivra */ } finally {
     interimBusy = false;
   }
-}, 1200);
+}, 900);
 
 async function toggleMic() {
   if (mic.active) {
@@ -769,8 +916,8 @@ function setMicUi(on) {
   $('mic-btn').setAttribute('aria-pressed', String(on));
   $('mic-btn').title = on ? 'Arrêter le micro (Espace)' : 'Parler (Espace)';
   $('composer-status').textContent = on
-    ? 'Micro actif · parle librement, je découpe aux pauses'
-    : 'Espace pour parler · Entrée pour envoyer';
+    ? 'Micro actif · parle librement, je découpe aux pauses · Espace pour couper'
+    : 'Espace : appui bref pour le micro continu, maintenu pour parler · Entrée pour envoyer';
   if (!on) showCaption('');
   renderMap({});
 }
@@ -1036,6 +1183,27 @@ function toast(message, { error = false, action = null, ms = 4500 } = {}) {
   setTimeout(() => { el.classList.add('leaving'); setTimeout(() => el.remove(), 300); }, ms);
 }
 
+// Barre espace : appui bref = micro continu (on/off) · appui maintenu = parler tant qu'on tient.
+const HOLD_MS = 350;
+let spaceDownAt = 0;
+let spaceStarted = false;
+let spaceStart = Promise.resolve();
+let spaceDown = false;
+let holdHint = null;
+document.addEventListener('keyup', async (e) => {
+  if (e.key !== ' ' || e.target.closest?.('input, textarea') || dialog.open) return;
+  e.preventDefault();
+  spaceDown = false;
+  clearTimeout(holdHint);
+  const held = Date.now() - spaceDownAt;
+  if (spaceStarted) {
+    await spaceStart;
+    if (held >= HOLD_MS && mic.active) await toggleMic(); // fin de l'appui maintenu : on envoie
+  } else if (mic.active) {
+    await toggleMic(); // appui bref, micro allumé : on l'éteint
+  }
+});
+
 document.addEventListener('keydown', (e) => {
   const typing = e.target.closest?.('input, textarea') || dialog.open;
   if (e.key === 'Escape') {
@@ -1046,8 +1214,22 @@ document.addEventListener('keydown', (e) => {
     return;
   }
   if (typing) return;
-  if (e.key === ' ') { e.preventDefault(); toggleMic(); }
-  else if (e.key === '/') { e.preventDefault(); $('text-input').focus(); }
+  if (e.key === ' ') {
+    e.preventDefault();
+    if (e.repeat) return;
+    spaceDownAt = Date.now();
+    // Micro éteint : on l'allume ; au relâchement, on saura si c'était un appui bref ou maintenu.
+    spaceStarted = !mic.active;
+    if (spaceStarted) {
+      spaceStart = toggleMic();
+      // Toujours appuyé après un instant : c'est un appui maintenu.
+      clearTimeout(holdHint);
+      holdHint = setTimeout(() => {
+        if (spaceDown && mic.active) $('composer-status').textContent = 'Enregistrement… relâche Espace pour envoyer';
+      }, HOLD_MS);
+    }
+    spaceDown = true;
+  } else if (e.key === '/') { e.preventDefault(); $('text-input').focus(); }
   else if ((e.key === 'Delete' || e.key === 'Backspace') && mapView.selected) { e.preventDefault(); deleteNode(mapView.selected); }
   else if ((e.key === 'Enter' || e.key === 'F2') && mapView.selected) { e.preventDefault(); startRename(mapView.selected); }
   else if (e.key === 'Tab' && mapView.selected) { e.preventDefault(); addChild(mapView.selected); }

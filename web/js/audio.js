@@ -36,10 +36,12 @@ export class MicCapture {
     return Boolean(this.active && this.vad.speaking);
   }
 
-  // WAV du morceau en cours de parole (transcription provisoire), ou null.
-  currentWav() {
+  // WAV du morceau en cours de parole (transcription provisoire), limité aux dernières secondes, ou null.
+  currentWav(maxSeconds = 8) {
     const samples = this.active ? this.vad.current() : null;
-    return samples ? encodeWav(samples, TARGET_RATE) : null;
+    if (!samples) return null;
+    const keep = Math.min(samples.length, Math.round(maxSeconds * TARGET_RATE));
+    return encodeWav(samples.subarray(samples.length - keep), TARGET_RATE);
   }
 
   // Arrêter envoie ce qui était en cours de phrase.

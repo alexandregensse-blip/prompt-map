@@ -5,15 +5,19 @@ import { spawn } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { UPDATE_SYSTEM, UPDATE_SCHEMA, EXPORT_SYSTEM, buildUpdateMessage, buildExportMessage } from './prompts.js';
-import { normalizeUpdate, extractJson } from './normalize.js';
+import {
+  UPDATE_SYSTEM, UPDATE_SCHEMA, EXPORT_SYSTEM, RESEARCH_SYSTEM, RESEARCH_SCHEMA,
+  buildUpdateMessage, buildExportMessage, buildResearchMessage,
+} from './prompts.js';
+import { normalizeUpdate, normalizeResearch, extractJson } from './normalize.js';
 import { ConversationPool } from './claude-stream.js';
 
 // Dossier vide : la CLI ne charge ni CLAUDE.md ni réglages d'un projet.
 export const WORK_DIR = join(tmpdir(), 'prompt-map-claude');
 
 // stream : processus gardé ouvert, messages JSON ligne par ligne sur l'entrée et la sortie.
-export function buildArgs({ system, schema, model, effort, stream = false }) {
+// tools : outils autorisés (aucun par défaut ; la recherche web n'a que WebSearch et WebFetch).
+export function buildArgs({ system, schema, model, effort, stream = false, tools = [] }) {
   const args = [
     '-p',
     ...(stream
@@ -27,8 +31,14 @@ export function buildArgs({ system, schema, model, effort, stream = false }) {
   if (schema) args.push('--json-schema', JSON.stringify(schema));
   if (model) args.push('--model', model);
   if (effort) args.push('--effort', effort);
-  // Aucun outil : le modèle ne fait que lire et répondre.
-  args.push('--tools', '');
+  if (tools.length) {
+    // Outils limités à la liste, et autorisés d'avance (pas de demande de permission en -p).
+    args.push('--allowedTools', tools.join(','));
+    args.push('--tools', ...tools);
+  } else {
+    // Aucun outil : le modèle ne fait que lire et répondre.
+    args.push('--tools', '');
+  }
   return args;
 }
 
@@ -205,6 +215,22 @@ export function createClaudeCli(cfg, { log = console, limits } = {}) {
         prompt: text.replace(/^```(?:markdown|md)?\n([\s\S]*)\n```$/, '$1'),
         meta: meta(envelope, 'export', cfg.exportEffort),
       };
+    },
+    // Agent de recherche : un processus à part, avec les seuls outils web. Il ne partage rien
+    // avec la conversation de travail ; seules les références ajoutées à la carte y reviennent.
+    async research(session, topic) {
+      const envelope = await runClaude({
+        ...base,
+        timeoutMs: Math.max(cfg.timeoutMs, cfg.researchTimeoutMs || 0),
+        effort: cfg.researchEffort,
+        system: RESEARCH_SYSTEM,
+        schema: useSchema ? RESEARCH_SCHEMA : null,
+        tools: ['WebSearch', 'WebFetch'],
+        prompt: buildResearchMessage(session, topic),
+      });
+      const data = envelope.structured_output ?? extractJson(envelope.result);
+      if (!data) throw new Error('Recherche sans résultat exploitable');
+      return { ...normalizeResearch(data), meta: meta(envelope, 'recherche', cfg.researchEffort) };
     },
     close() {
       pool.closeAll();

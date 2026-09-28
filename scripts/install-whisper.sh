@@ -58,5 +58,17 @@ else
 fi
 
 echo "$MODEL" > "$DIR/model"
+
+# Modèle minuscule pour le direct (les mots s'affichent pendant qu'on parle). WHISPER_LIVE=0 pour s'en passer.
+if [ "${WHISPER_LIVE:-1}" != "0" ]; then
+  LIVE_FILE="$DIR/models/ggml-tiny-q5_1.bin"
+  if [ -f "$LIVE_FILE" ]; then
+    echo "✓ Modèle du direct déjà présent : $LIVE_FILE"
+  else
+    echo "→ Téléchargement du modèle du direct (tiny, ~31 Mo)…"
+    curl -L --fail --progress-bar -o "$LIVE_FILE.part" "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny-q5_1.bin"
+    mv "$LIVE_FILE.part" "$LIVE_FILE"
+  fi
+fi
 echo
 echo "Prêt. Lance Whisper avec : npm run whisper"

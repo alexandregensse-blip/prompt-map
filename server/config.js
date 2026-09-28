@@ -17,7 +17,11 @@ const DEFAULTS = {
   updateEffort: 'low', // mises à jour fréquentes : on privilégie la réactivité
   exportEffort: '', // export : effort par défaut du modèle
   timeoutMs: 120000,
+  researchTimeoutMs: 300000, // une recherche web peut prendre quelques minutes
+  researchEffort: '',
   whisperUrl: 'http://127.0.0.1:8178/inference',
+  // Serveur Whisper minuscule dédié au direct (mots affichés pendant qu'on parle) ; '' pour s'en passer.
+  whisperLiveUrl: 'http://127.0.0.1:8179/inference',
   whisperModel: '',
   language: 'fr',
   openWindow: true,
@@ -38,7 +42,9 @@ const ENV = {
   updateEffort: ['PROMPTMAP_UPDATE_EFFORT', String],
   exportEffort: ['PROMPTMAP_EXPORT_EFFORT', String],
   timeoutMs: ['PROMPTMAP_TIMEOUT_MS', Number],
+  researchEffort: ['PROMPTMAP_RESEARCH_EFFORT', String],
   whisperUrl: ['PROMPTMAP_WHISPER_URL', String],
+  whisperLiveUrl: ['PROMPTMAP_WHISPER_LIVE_URL', String],
   whisperModel: ['PROMPTMAP_WHISPER_MODEL', String],
   language: ['PROMPTMAP_LANGUAGE', String],
   openWindow: ['PROMPTMAP_OPEN', (v) => !/^(0|false|no|non)$/i.test(v)],

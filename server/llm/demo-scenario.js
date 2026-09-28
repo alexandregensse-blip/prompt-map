@@ -6,7 +6,7 @@ const baseGrid = {
   objectif: g('missing'), contexte: g('missing'), perimetre: g('missing'), contraintes: g('missing'),
   references: g('missing'), critere_fin: g('missing'), priorites: g('missing'), points_libres: g('missing'),
 };
-const sug = (id, kind, dimension, text, node = '') => ({ id, kind, dimension, text, node });
+const sug = (id, kind, dimension, text, node = '') => ({ id, kind, dimension, text, node, requested: false });
 
 const S2 = sug('s2', 'question', 'critere_fin', 'Comment tu sauras que l’export PDF est terminé ?');
 const S3 = sug('s3', 'question', 'perimetre', 'Y a-t-il des parties du code que Claude ne doit pas toucher ?');
@@ -14,6 +14,7 @@ const S5 = sug('s5', 'lead', 'references', 'Tu as déjà un modèle de facture d
 const S6 = sug('s6', 'blind_spot', 'perimetre', 'Une facture à la fois, ou aussi un export groupé de plusieurs factures ?', 'n2');
 const S7 = sug('s7', 'lead', 'critere_fin', 'Faut-il écrire de nouveaux tests Jest pour l’export ?', 'n9');
 const S8 = sug('s8', 'blind_spot', 'contraintes', 'pdfkit ne lit pas le HTML : il faudra redessiner la facture en code. Ça te va ?', 'n6');
+const S10 = sug('s10', 'search', 'references', 'Exemples de factures PDF générées avec pdfkit à partir d’un modèle HTML', 'n12');
 const S9 = sug('s9', 'question', 'points_libres', 'Claude peut-il choisir seul la mise en page exacte du PDF ?');
 
 export const DEMO_SCENARIO = [
@@ -132,7 +133,7 @@ export const DEMO_SCENARIO = [
         references: g('covered', 'templates/invoice.html : modèle dont le PDF doit reprendre la mise en page.'),
         critere_fin: g('covered', 'Le bouton télécharge le PDF et les tests Jest passent.'),
       },
-      suggestions: [S8, S6, S7],
+      suggestions: [S8, S6, S10],
     },
   },
   {

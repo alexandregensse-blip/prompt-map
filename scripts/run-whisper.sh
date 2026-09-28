@@ -24,5 +24,16 @@ if [ ! -f "$FILE" ]; then
 fi
 
 THREADS="${WHISPER_THREADS:-$( (nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4) | awk '{print ($1 > 8) ? 8 : $1}')}"
+
+# Serveur du direct (tiny, 1 cœur) en arrière-plan, arrêté avec le principal.
+LIVE_FILE="$DIR/models/ggml-tiny-q5_1.bin"
+LIVE_PORT="${WHISPER_LIVE_PORT:-8179}"
+if [ "${WHISPER_LIVE:-1}" != "0" ] && [ -f "$LIVE_FILE" ]; then
+  echo "→ Whisper du direct (tiny, 1 thread) sur http://127.0.0.1:$LIVE_PORT/inference"
+  "$BIN" -m "$LIVE_FILE" -l "$LANGUAGE" -t 1 --host 127.0.0.1 --port "$LIVE_PORT" >/dev/null 2>&1 &
+  LIVE_PID=$!
+  trap 'kill $LIVE_PID 2>/dev/null' EXIT INT TERM
+fi
+
 echo "→ Whisper ($MODEL, $THREADS threads) sur http://127.0.0.1:$PORT/inference"
-exec "$BIN" -m "$FILE" -l "$LANGUAGE" -t "$THREADS" --host 127.0.0.1 --port "$PORT"
+"$BIN" -m "$FILE" -l "$LANGUAGE" -t "$THREADS" --host 127.0.0.1 --port "$PORT"

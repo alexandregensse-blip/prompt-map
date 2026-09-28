@@ -35,6 +35,7 @@
     <section class="canvas" id="canvas">
       <div class="questions" id="questions" hidden>
         <div class="suggestions" id="suggestions"></div>
+        <div class="research" id="research" hidden></div>
         <div class="later" id="later" hidden>
           <button type="button" class="later-toggle" id="later-toggle" aria-expanded="false"></button>
           <ul class="later-list" id="later-list" hidden></ul>
@@ -67,7 +68,7 @@
               Voir la démo
             </button>
           </div>
-          <p class="hint"><kbd>Espace</kbd> pour parler · <kbd>/</kbd> pour écrire</p>
+          <p class="hint"><kbd>Espace</kbd> maintenu pour parler, appui bref pour le micro continu · <kbd>/</kbd> pour écrire</p>
         </div>
 
         <div class="node-toolbar" id="node-toolbar" hidden>
@@ -75,6 +76,7 @@
             <button type="button" data-action="rename" title="Renommer (Entrée)">Renommer</button>
             <button type="button" data-action="add" title="Ajouter un point dessous (Tab)">Ajouter</button>
             <button type="button" data-action="focus" title="Demander à l'agent d'approfondir ce point">Creuser</button>
+          <button type="button" data-action="search" title="Lancer une recherche web sur ce point (agent séparé)">Chercher</button>
             <button type="button" data-action="delete" class="danger" title="Supprimer (Suppr)">Supprimer</button>
           </div>
           <p class="node-detail" id="node-detail" hidden></p>

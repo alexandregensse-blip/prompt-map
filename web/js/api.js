@@ -33,7 +33,8 @@ export const api = {
   demoScript: () => call('GET', '/api/demo-script'),
   update: (session, demo) => call('POST', '/api/update', { session: payload(session), demo }),
   export: (session, { demo, draft } = {}) => call('POST', '/api/export', { session: payload(session), demo, draft }),
-  transcribe: (wav, prompt = '') => call('POST', '/api/transcribe', wav, { 'x-whisper-prompt': encodeURIComponent(prompt) }),
+  transcribe: (wav, prompt = '', { live = false } = {}) => call('POST', `/api/transcribe${live ? '?live=1' : ''}`, wav, { 'x-whisper-prompt': encodeURIComponent(prompt) }),
+  research: (session, topic) => call('POST', '/api/research', { session: payload(session), topic, demo: session.demo }),
   // Démarre la conversation Claude à l'avance : la première mise à jour n'attend pas la CLI.
   warmup: (session) => call('POST', '/api/warmup', { sessionId: session.id, demo: session.demo }).catch(() => {}),
 };
