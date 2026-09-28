@@ -20,7 +20,7 @@ export class MicCapture {
     this.source = this.ctx.createMediaStreamSource(this.stream);
     this.node = new AudioWorkletNode(this.ctx, 'capture-processor');
     this.vad = new Vad({
-      onSegment: (samples) => this.onSegment(encodeWav(samples, TARGET_RATE), samples.length / TARGET_RATE),
+      onSegment: (samples, info) => this.onSegment(encodeWav(samples, TARGET_RATE), samples.length / TARGET_RATE, info),
       onSpeechStart: () => this.onSpeechStart(),
     });
     const rate = this.ctx.sampleRate;
@@ -30,6 +30,16 @@ export class MicCapture {
     };
     this.source.connect(this.node);
     this.active = true;
+  }
+
+  get speaking() {
+    return Boolean(this.active && this.vad.speaking);
+  }
+
+  // WAV du morceau en cours de parole (transcription provisoire), ou null.
+  currentWav() {
+    const samples = this.active ? this.vad.current() : null;
+    return samples ? encodeWav(samples, TARGET_RATE) : null;
   }
 
   // Arrêter envoie ce qui était en cours de phrase.

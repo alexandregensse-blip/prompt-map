@@ -20,7 +20,9 @@ async function call(method, path, body, headers = {}) {
 function payload(session) {
   const { map, grid, suggestions, dismissed, segments, processedCount, hidden } = session;
   const usedSuggestionIds = hidden.map((h) => h.id);
-  return { sessionId: session.id, map, grid, suggestions, dismissed, segments, processedCount, usedSuggestionIds };
+  // Une question déjà répondue n'est plus « affichée » pour l'agent.
+  const shown = suggestions.filter((s) => !s.answered);
+  return { sessionId: session.id, map, grid, suggestions: shown, dismissed, segments, processedCount, usedSuggestionIds };
 }
 
 export const api = {

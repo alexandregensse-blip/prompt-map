@@ -346,5 +346,9 @@ export function createMapView(svg, handlers = {}) {
       follow = true;
     },
     isRoot: (id) => id === ROOT_ID,
+    flash(id) {
+      const g = nodeEls.get(id);
+      if (g) flash(g, 'fresh', 2400);
+    },
   };
 }

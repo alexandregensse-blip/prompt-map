@@ -135,7 +135,7 @@ function positionToolbar() {
   toolbar.hidden = false;
   // Centrée au-dessus du nœud, sans déborder du canevas.
   const half = toolbar.offsetWidth / 2;
-  const width = $('canvas').clientWidth;
+  const width = $('map-area').clientWidth;
   toolbar.style.left = `${Math.min(Math.max(box.x, half + 8), width - half - 8)}px`;
   toolbar.style.top = `${Math.max(box.y - box.h / 2, toolbar.offsetHeight + 18)}px`;
   toolbar.querySelector('[data-action="delete"]').hidden = id === ROOT_ID;
@@ -235,14 +235,24 @@ function addSegment({ text, answerTo, focus }) {
   });
   if (target) {
     session.hidden.push({ id: target.id, text: target.text });
-    session.suggestions = session.suggestions.filter((s) => s.id !== target.id);
+    // La carte reste affichée, validée, jusqu'à ce que l'agent intègre la réponse.
+    const card = session.suggestions.find((s) => s.id === target.id);
+    if (card) card.answered = true;
     if (answering && answering.id === target.id) setAnswering(null);
   }
   save();
   renderMap({});
   renderTranscript();
   renderSuggestions();
-  scheduleUpdate();
+  // Un « merci » ou un mot isolé attend la suite plutôt que de déclencher un appel à lui seul.
+  scheduleUpdate(onlyMinorNews() ? 4000 : 450);
+}
+
+function onlyMinorNews() {
+  const fresh = session.segments.slice(session.processedCount);
+  if (fresh.some((s) => s.answerTo || s.focus || s.corrects !== undefined || s.retracts !== undefined)) return false;
+  const words = fresh.reduce((n, s) => n + s.text.split(/\s+/).filter(Boolean).length, 0);
+  return words < 4;
 }
 
 let updateTimer = null;
@@ -261,6 +271,7 @@ async function runUpdate() {
   try {
     const res = await api.update(current, current.demo);
     if (current !== session) return; // session remplacée entre-temps
+    const flights = captureAnswered();
     const { map, changes, rejected } = applyOps(session.map, res.ops, { origin: 'ai' });
     if (rejected.length) console.info('Opérations écartées', rejected);
     session.map = map;
@@ -273,6 +284,7 @@ async function runUpdate() {
     renderSuggestions();
     renderGrid();
     hideActivity();
+    launchFlights(flights, changes);
   } catch (err) {
     showActivity(err.message, true);
     toast(err.message, { error: true, action: { label: 'Réessayer', fn: () => scheduleUpdate(0) } });
@@ -307,6 +319,63 @@ function hideActivity() {
   $('llm-chip').classList.remove('busy');
 }
 
+// ---------- Réponse intégrée : la carte question rejoint la carte heuristique ----------
+
+// Avant la mise à jour : copie des cartes répondues, à leur place à l'écran.
+function captureAnswered() {
+  const box = $('suggestions');
+  return session.suggestions.filter((s) => s.answered).map((s) => {
+    const el = box.querySelector(`[data-id="${CSS.escape(s.id)}"]`);
+    return el ? { s, clone: el.cloneNode(true), rect: el.getBoundingClientRect() } : null;
+  }).filter(Boolean);
+}
+
+// Le nœud qui répond le mieux à la question : celui qu'elle visait s'il a changé,
+// sinon le premier ajouté, sinon le premier modifié.
+function answerTarget(s, changes) {
+  const touched = [...(changes.added || []), ...(changes.updated || []), ...(changes.moved || [])];
+  if (s.node && touched.includes(s.node)) return s.node;
+  if (changes.added?.length) return changes.added[0];
+  if (touched.length) return touched[0];
+  return s.node && session.map.nodes[s.node] ? s.node : null;
+}
+
+function launchFlights(flights, changes) {
+  if (!flights.length) return;
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // Deux images : la carte a pu se recadrer (le bandeau a changé de hauteur).
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    for (const { s, clone, rect } of flights) {
+      const target = answerTarget(s, changes);
+      Object.assign(clone.style, {
+        position: 'fixed', left: `${rect.left}px`, top: `${rect.top}px`,
+        width: `${rect.width}px`, height: `${rect.height}px`, margin: '0', zIndex: '60', pointerEvents: 'none',
+      });
+      clone.classList.add('flying');
+      document.body.append(clone);
+      const box = target && mapView.screenBox(target);
+      if (!box || reduced) {
+        clone.animate([{ opacity: 1 }, { opacity: 0, transform: 'scale(.94)' }], { duration: 450, easing: 'ease-out' })
+          .onfinish = () => { clone.remove(); if (target) mapView.flash(target); };
+        continue;
+      }
+      const svg = $('map').getBoundingClientRect();
+      const dx = svg.left + box.x - (rect.left + rect.width / 2);
+      const dy = svg.top + box.y - (rect.top + rect.height / 2);
+      const sx = Math.max(box.w / rect.width, 0.08);
+      const sy = Math.max(box.h / rect.height, 0.08);
+      clone.animate([
+        { transform: 'translate(0, 0) scale(1)', opacity: 1, offset: 0 },
+        { transform: 'translate(0, -8px) scale(1.03)', opacity: 1, offset: 0.18 },
+        { transform: `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`, opacity: 0.25, offset: 1 },
+      ], { duration: 850, easing: 'cubic-bezier(.55, 0, .25, 1)' }).onfinish = () => {
+        clone.remove();
+        mapView.flash(target);
+      };
+    }
+  }));
+}
+
 // ---------- Panneau : suggestions, grille, transcription ----------
 
 function setAnswering(target) {
@@ -318,48 +387,55 @@ function setAnswering(target) {
 }
 $('answer-cancel').addEventListener('click', () => setAnswering(null));
 
+function buildCard(s) {
+  const card = document.createElement('div');
+  card.dataset.id = s.id;
+  card.dataset.text = s.text;
+  const dim = DIMENSIONS.find((d) => d.key === s.dimension);
+  card.innerHTML = `
+    <div class="sugg-kind"></div>
+    <p class="sugg-text"></p>
+    <div class="sugg-actions">
+      <button type="button" class="answer">Répondre</button>
+      <button type="button" class="dismiss" title="Ne plus proposer">Ignorer</button>
+      <span class="dim"></span>
+    </div>
+    <div class="sugg-done"><span class="check">✓</span> Réponse notée · l’agent l’intègre…</div>`;
+  card.querySelector('.sugg-kind').textContent = KIND_LABELS[s.kind] || 'Question';
+  card.querySelector('.sugg-text').textContent = s.text;
+  card.querySelector('.dim').textContent = dim ? dim.label : '';
+  card.querySelector('.answer').addEventListener('click', () => setAnswering(answering?.id === s.id ? null : s));
+  card.querySelector('.dismiss').addEventListener('click', () => {
+    session.dismissed.push(s.text);
+    session.hidden.push({ id: s.id, text: s.text });
+    session.suggestions = session.suggestions.filter((x) => x.id !== s.id);
+    if (answering?.id === s.id) setAnswering(null);
+    save();
+    renderSuggestions();
+  });
+  card.addEventListener('mouseenter', () => mapView.setLinked(s.node || null));
+  card.addEventListener('mouseleave', () => mapView.setLinked(null));
+  return card;
+}
+
+// Rendu par clé : une question déjà affichée garde sa carte, seules les nouvelles s'animent.
 function renderSuggestions() {
   const box = $('suggestions');
   const list = session.suggestions;
-  $('sugg-count').textContent = list.length || '';
-  box.textContent = '';
-  if (!list.length) {
-    const p = document.createElement('p');
-    p.className = 'none';
-    p.textContent = session.segments.length
-      ? 'Rien à demander pour l’instant. Continue, ou génère le prompt.'
-      : 'Les questions de l’agent apparaîtront ici pendant que tu parles.';
-    box.append(p);
-    return;
-  }
-  for (const s of list) {
-    const card = document.createElement('div');
-    card.className = `sugg ${s.kind}${answering?.id === s.id ? ' active' : ''}`;
-    const dim = DIMENSIONS.find((d) => d.key === s.dimension);
-    card.innerHTML = `
-      <div class="sugg-kind"></div>
-      <p class="sugg-text"></p>
-      <div class="sugg-actions">
-        <button type="button" class="answer">Répondre</button>
-        <button type="button" class="dismiss" title="Ne plus proposer">Ignorer</button>
-        <span class="dim"></span>
-      </div>`;
-    card.querySelector('.sugg-kind').textContent = KIND_LABELS[s.kind] || 'Question';
-    card.querySelector('.sugg-text').textContent = s.text;
-    card.querySelector('.dim').textContent = dim ? dim.label : '';
-    card.querySelector('.answer').addEventListener('click', () => setAnswering(answering?.id === s.id ? null : s));
-    card.querySelector('.dismiss').addEventListener('click', () => {
-      session.dismissed.push(s.text);
-      session.hidden.push({ id: s.id, text: s.text });
-      session.suggestions = session.suggestions.filter((x) => x.id !== s.id);
-      if (answering?.id === s.id) setAnswering(null);
-      save();
-      renderSuggestions();
-    });
-    card.addEventListener('mouseenter', () => mapView.setLinked(s.node || null));
-    card.addEventListener('mouseleave', () => mapView.setLinked(null));
-    box.append(card);
-  }
+  // Le bandeau n'apparaît que lorsqu'il y a des questions.
+  $('questions').hidden = !list.length;
+  const existing = new Map([...box.children].map((el) => [el.dataset.id, el]));
+  list.forEach((s, i) => {
+    let card = existing.get(s.id);
+    if (!card || card.dataset.text !== s.text) {
+      card?.remove();
+      card = buildCard(s);
+    }
+    existing.delete(s.id);
+    card.className = `sugg ${s.kind}${answering?.id === s.id ? ' active' : ''}${s.answered ? ' answered' : ''}`;
+    if (box.children[i] !== card) box.insertBefore(card, box.children[i] || null);
+  });
+  for (const el of existing.values()) el.remove();
 }
 
 function renderGrid() {
@@ -372,7 +448,7 @@ function renderGrid() {
     const g = session.grid[d.key] || { status: 'missing', summary: '' };
     const li = document.createElement('li');
     li.className = `grid-item ${g.status}`;
-    li.title = `${d.hint}\nStatut : ${STATUS_LABELS[g.status]}${g.status === 'missing' || g.status === 'partial' ? '\nClique pour y répondre.' : ''}`;
+    li.title = `${d.hint}${g.summary ? `\n\n${g.summary}` : ''}\n\nStatut : ${STATUS_LABELS[g.status]}${g.status === 'missing' || g.status === 'partial' ? '\nClique pour y répondre.' : ''}`;
     li.innerHTML = '<span class="grid-dot"></span><span class="grid-name"></span><span class="grid-summary"></span>';
     li.querySelector('.grid-name').textContent = d.label;
     li.querySelector('.grid-summary').textContent = g.summary;
@@ -433,7 +509,15 @@ function renderTranscript() {
     li.textContent = `Transcription (${p.duration.toFixed(1)} s)`;
     list.append(li);
   }
+  // Suit le texte, sauf si on est remonté lire plus haut.
+  const zone = list.parentElement;
+  if (stickToBottom) zone.scrollTop = zone.scrollHeight;
 }
+let stickToBottom = true;
+$('transcript').parentElement.addEventListener('scroll', (e) => {
+  const z = e.currentTarget;
+  stickToBottom = z.scrollHeight - z.scrollTop - z.clientHeight < 40;
+});
 
 // Whisper se trompe parfois : on corrige la phrase, et l'agent remet la carte en accord.
 function editSegment(seg, li) {
@@ -510,6 +594,11 @@ function showCaption(text, listening = false) {
 }
 
 let transcribeQueue = Promise.resolve();
+// Vitesse de Whisper : temps de transcription / durée de l'audio (moyenne glissante).
+let sttSpeed = null;
+let interimBusy = false;
+const INTERIM_MAX_SPEED = 0.33; // provisoire seulement si Whisper va 3 fois plus vite que la parole
+
 const mic = new MicCapture({
   onSpeechStart: () => showCaption('Je t’écoute…', true),
   onLevel: (level) => {
@@ -519,12 +608,14 @@ const mic = new MicCapture({
     const target = answering; // la réponse vise la question active au moment où on parle
     const job = { id: uid(), duration };
     pending.push(job);
-    showCaption('');
     renderTranscript();
     renderMap({});
     transcribeQueue = transcribeQueue.then(async () => {
       try {
+        const started = Date.now();
         const { text } = await api.transcribe(wav, whisperPrompt());
+        const speed = (Date.now() - started) / 1000 / duration;
+        sttSpeed = sttSpeed === null ? speed : sttSpeed * 0.7 + speed * 0.3;
         pending = pending.filter((p) => p !== job);
         if (text) {
           addSegment({ text, answerTo: target });
@@ -539,6 +630,21 @@ const mic = new MicCapture({
     });
   },
 });
+
+// Transcription provisoire du morceau en cours, affichée dans la bulle pendant qu'on parle.
+// Seulement si Whisper est assez rapide et libre : elle ne doit jamais retarder les morceaux définitifs.
+setInterval(async () => {
+  if (!mic.speaking || interimBusy || pending.length || sttSpeed === null || sttSpeed > INTERIM_MAX_SPEED) return;
+  const wav = mic.currentWav();
+  if (!wav) return;
+  interimBusy = true;
+  try {
+    const { text } = await api.transcribe(wav, whisperPrompt());
+    if (text && mic.speaking) showCaption(`${text} …`, true);
+  } catch { /* le morceau définitif suivra */ } finally {
+    interimBusy = false;
+  }
+}, 1200);
 
 async function toggleMic() {
   if (mic.active) {
@@ -837,7 +943,7 @@ function toast(message, { error = false, action = null, ms = 4500 } = {}) {
 }
 
 document.addEventListener('keydown', (e) => {
-  const typing = e.target.closest('input, textarea') || dialog.open;
+  const typing = e.target.closest?.('input, textarea') || dialog.open;
   if (e.key === 'Escape') {
     if (demoRunning) { demoRunning = false; showCaption(''); setMicUi(mic.active); toast('Démo arrêtée.'); return; }
     if (answering) { setAnswering(null); return; }

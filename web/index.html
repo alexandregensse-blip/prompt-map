@@ -33,84 +33,85 @@
 
   <main class="stage">
     <section class="canvas" id="canvas">
-      <svg id="map" class="map" aria-label="Carte heuristique">
-        <defs>
-          <pattern id="dots" width="24" height="24" patternUnits="userSpaceOnUse">
-            <circle cx="1.5" cy="1.5" r="1.1" class="dot"/>
-          </pattern>
-        </defs>
-        <rect class="bg" width="100%" height="100%" fill="url(#dots)"/>
-        <g class="viewport" id="viewport">
-          <g class="edges" id="edges"></g>
-          <g class="nodes" id="nodes"></g>
-        </g>
-      </svg>
+      <div class="questions" id="questions" hidden>
+        <div class="suggestions" id="suggestions"></div>
+      </div>
+      <div class="map-area" id="map-area">
+        <svg id="map" class="map" aria-label="Carte heuristique">
+          <defs>
+            <pattern id="dots" width="24" height="24" patternUnits="userSpaceOnUse">
+              <circle cx="1.5" cy="1.5" r="1.1" class="dot"/>
+            </pattern>
+          </defs>
+          <rect class="bg" width="100%" height="100%" fill="url(#dots)"/>
+          <g class="viewport" id="viewport">
+            <g class="edges" id="edges"></g>
+            <g class="nodes" id="nodes"></g>
+          </g>
+        </svg>
 
-      <div class="empty" id="empty">
-        <h1>De quoi as-tu besoin&nbsp;?</h1>
-        <p>Décris la tâche que tu veux confier à Claude Code, librement, comme à un collègue.<br>La carte se construit pendant que tu parles, et l'agent te pose les bonnes questions.</p>
-        <div class="empty-actions">
-          <button class="btn primary big" id="empty-mic" type="button">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
-            Parler
-          </button>
-          <button class="btn big" id="demo-btn" type="button">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z"/></svg>
-            Voir la démo
+        <div class="empty" id="empty">
+          <h1>De quoi as-tu besoin&nbsp;?</h1>
+          <p>Décris la tâche que tu veux confier à Claude Code, librement, comme à un collègue.<br>La carte se construit pendant que tu parles, et l'agent te pose les bonnes questions.</p>
+          <div class="empty-actions">
+            <button class="btn primary big" id="empty-mic" type="button">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+              Parler
+            </button>
+            <button class="btn big" id="demo-btn" type="button">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z"/></svg>
+              Voir la démo
+            </button>
+          </div>
+          <p class="hint"><kbd>Espace</kbd> pour parler · <kbd>/</kbd> pour écrire</p>
+        </div>
+
+        <div class="node-toolbar" id="node-toolbar" hidden>
+          <div class="node-actions">
+            <button type="button" data-action="rename" title="Renommer (Entrée)">Renommer</button>
+            <button type="button" data-action="add" title="Ajouter un point dessous (Tab)">Ajouter</button>
+            <button type="button" data-action="focus" title="Demander à l'agent d'approfondir ce point">Creuser</button>
+            <button type="button" data-action="delete" class="danger" title="Supprimer (Suppr)">Supprimer</button>
+          </div>
+          <p class="node-detail" id="node-detail" hidden></p>
+        </div>
+        <input class="rename-input" id="rename-input" type="text" hidden>
+
+        <div class="map-controls">
+          <button type="button" id="zoom-in" title="Zoomer">+</button>
+          <button type="button" id="zoom-out" title="Dézoomer">−</button>
+          <button type="button" id="zoom-fit" title="Recentrer">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
           </button>
         </div>
-        <p class="hint"><kbd>Espace</kbd> pour parler · <kbd>/</kbd> pour écrire</p>
-      </div>
 
-      <div class="node-toolbar" id="node-toolbar" hidden>
-        <div class="node-actions">
-          <button type="button" data-action="rename" title="Renommer (Entrée)">Renommer</button>
-          <button type="button" data-action="add" title="Ajouter un point dessous (Tab)">Ajouter</button>
-          <button type="button" data-action="focus" title="Demander à l'agent d'approfondir ce point">Creuser</button>
-          <button type="button" data-action="delete" class="danger" title="Supprimer (Suppr)">Supprimer</button>
+        <div class="agent-activity" id="agent-activity" hidden>
+          <span class="spinner"></span><span id="agent-activity-text">L'agent met la carte à jour…</span>
         </div>
-        <p class="node-detail" id="node-detail" hidden></p>
-      </div>
-      <input class="rename-input" id="rename-input" type="text" hidden>
 
-      <div class="map-controls">
-        <button type="button" id="zoom-in" title="Zoomer">+</button>
-        <button type="button" id="zoom-out" title="Dézoomer">−</button>
-        <button type="button" id="zoom-fit" title="Recentrer">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
-        </button>
-      </div>
-
-      <div class="agent-activity" id="agent-activity" hidden>
-        <span class="spinner"></span><span id="agent-activity-text">L'agent met la carte à jour…</span>
-      </div>
-
-      <div class="composer" id="composer">
-        <div class="caption" id="caption" hidden></div>
-        <div class="answer-chip" id="answer-chip" hidden>
-          <span class="answer-label">Réponse à</span>
-          <span class="answer-text" id="answer-text"></span>
-          <button type="button" id="answer-cancel" title="Annuler (Échap)">×</button>
+        <div class="composer" id="composer">
+          <div class="caption" id="caption" hidden></div>
+          <div class="answer-chip" id="answer-chip" hidden>
+            <span class="answer-label">Réponse à</span>
+            <span class="answer-text" id="answer-text"></span>
+            <button type="button" id="answer-cancel" title="Annuler (Échap)">×</button>
+          </div>
+          <form class="composer-bar" id="composer-form" autocomplete="off">
+            <button class="mic" id="mic-btn" type="button" title="Parler (Espace)" aria-pressed="false">
+              <span class="mic-level" id="mic-level"></span>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+            </button>
+            <input id="text-input" type="text" placeholder="Parle, ou écris ici…" aria-label="Texte">
+            <button class="send" id="send-btn" type="submit" title="Envoyer (Entrée)">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13m0 0-5-5m5 5-5 5"/></svg>
+            </button>
+          </form>
+          <div class="composer-status" id="composer-status"></div>
         </div>
-        <form class="composer-bar" id="composer-form" autocomplete="off">
-          <button class="mic" id="mic-btn" type="button" title="Parler (Espace)" aria-pressed="false">
-            <span class="mic-level" id="mic-level"></span>
-            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
-          </button>
-          <input id="text-input" type="text" placeholder="Parle, ou écris ici…" aria-label="Texte">
-          <button class="send" id="send-btn" type="submit" title="Envoyer (Entrée)">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13m0 0-5-5m5 5-5 5"/></svg>
-          </button>
-        </form>
-        <div class="composer-status" id="composer-status"></div>
       </div>
     </section>
 
     <aside class="panel">
-      <section class="block suggestions-block">
-        <h2>L'agent te demande <span class="count" id="sugg-count"></span></h2>
-        <div class="suggestions" id="suggestions"></div>
-      </section>
       <section class="block grid-block">
         <h2>Couverture du prompt <span class="progress-label" id="grid-progress-label"></span></h2>
         <div class="progress"><div class="progress-bar" id="grid-progress"></div></div>

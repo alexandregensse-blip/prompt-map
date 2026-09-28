@@ -66,6 +66,43 @@ test('VAD : un bruit bref est ignoré', () => {
   assert.equal(segments.length, 0);
 });
 
+// Parole continue avec de courtes respirations (300 ms) toutes les 2,5 s.
+function monologue(seconds) {
+  const parts = [silence(500)];
+  for (let t = 0; t < seconds; t += 2.8) parts.push(voice(2500), silence(300));
+  parts.push(silence(1200));
+  return parts;
+}
+
+test('VAD : 30 s de parole avec respirations, découpées en morceaux de 6 à 9 s', () => {
+  const segments = [];
+  const vad = new Vad({ onSegment: (s, info) => segments.push({ d: s.length / RATE, final: info.final }) });
+  feed(vad, monologue(30));
+  assert.ok(segments.length >= 3 && segments.length <= 6, `${segments.length} morceaux`);
+  for (const s of segments) assert.ok(s.d >= 5.5 && s.d <= 9.5, `morceau de ${s.d.toFixed(1)} s`);
+  const total = segments.reduce((a, s) => a + s.d, 0);
+  assert.ok(total > 27, `durée totale ${total.toFixed(1)} s`);
+});
+
+test('VAD : 30 s sans aucune pause, jamais plus de 12 s d’attente', () => {
+  const segments = [];
+  const vad = new Vad({ onSegment: (s) => segments.push(s.length / RATE) });
+  feed(vad, [silence(500), voice(30000), silence(1200)]);
+  assert.ok(segments.length >= 3, `${segments.length} morceaux`);
+  for (const d of segments) assert.ok(d <= 12.1, `morceau de ${d.toFixed(1)} s`);
+  const total = segments.reduce((a, d) => a + d, 0);
+  assert.ok(Math.abs(total - 30.3) < 1.2, `durée totale ${total.toFixed(1)} s`);
+});
+
+test('VAD : audio de la phrase en cours disponible pour une transcription provisoire', () => {
+  const vad = new Vad();
+  feed(vad, [silence(500), voice(500)]);
+  assert.equal(vad.current(), null, 'moins d’une seconde : rien');
+  feed(vad, [voice(1500)]);
+  const cur = vad.current();
+  assert.ok(cur && cur.length / RATE > 1.8);
+});
+
 test('VAD : arrêter le micro envoie la phrase en cours', () => {
   const segments = [];
   const vad = new Vad({ onSegment: (s) => segments.push(s) });

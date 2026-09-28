@@ -11,10 +11,21 @@ const HALLUCINATIONS = [
   /^\s*\.+\s*$/,
 ];
 
+// Annotations de bruit que Whisper ajoute : [Bruit de joie], (Rires), *tousse*, ♪ … ♪.
+// Une parenthèse longue (5 mots ou plus) est gardée : c'est sans doute vraiment dit.
+function stripNoise(text) {
+  return text
+    .replace(/\[[^\]]*\]/g, ' ')
+    .replace(/\(([^)]*)\)/g, (m, inner) => (inner.trim().split(/\s+/).length >= 5 ? m : ' '))
+    .replace(/\*[^*]{1,40}\*/g, ' ')
+    .replace(/♪[^♪]*♪?/g, ' ');
+}
+
 export function cleanTranscript(text) {
-  let out = String(text || '')
-    .replace(/\[(BLANK_AUDIO|MUSIC|Musique|Silence)\]/gi, ' ')
+  let out = stripNoise(String(text || ''))
+    .replace(/\s+([,.;:!?])/g, '$1')
     .replace(/\s+/g, ' ')
+    .replace(/^[\s,.;:!?-]+/, '')
     .trim();
   if (HALLUCINATIONS.some((re) => re.test(out))) return '';
   // Répétitions en boucle : autre symptôme d'hallucination.
@@ -38,6 +49,8 @@ export async function transcribe(wav, cfg, { prompt = '' } = {}) {
     form.append('model', cfg.whisperModel || 'whisper-1');
   } else {
     form.append('temperature', '0.0');
+    // whisper.cpp : pas de jetons « non-parole » ([Musique], (Rires)…).
+    form.append('suppress_nst', 'true');
   }
   let res;
   try {

@@ -133,10 +133,17 @@ Claude, il ne faut pas l'exposer à tout le réseau.
   et ✕ (retirer la phrase). L'agent remet la carte en accord. Après chaque phrase dite, la
   bulle montre un instant ce que Whisper a compris. Les termes de la carte sont transmis à
   Whisper comme vocabulaire, pour mieux reconnaître les noms techniques.
-- **Suggestions** : *Répondre* rattache ta prochaine phrase à la question ; *Ignorer* l'écarte
-  pour de bon. Survoler une suggestion met en évidence le nœud concerné.
-- **Couverture** : l'état des 8 dimensions de la grille. Cliquer une dimension permet d'y
-  répondre directement.
+- **Questions de l'agent** : en cartes au-dessus de la carte heuristique. *Répondre*
+  rattache ta prochaine phrase à la question : la carte passe à « Réponse notée ✓ », puis
+  s'envole vers le nœud que ta réponse a créé ou modifié. *Ignorer* l'écarte pour de bon.
+  Survoler une question met en évidence le nœud concerné.
+- **Parole longue** : le texte est découpé aux respirations (au-delà de 6 s de parole) ou,
+  sans aucune pause, toutes les 12 s au plus : il arrive au fil de l'eau. Si Whisper est
+  assez rapide (3 fois plus vite que la parole), la bulle montre en plus une transcription
+  provisoire pendant qu'on parle. Les bruits (« [Rires] », « *porte* ») sont écartés, et un
+  mot isolé (« merci ») attend la suite au lieu de déclencher une mise à jour.
+- **Panneau de gauche** : la couverture (les 8 dimensions de la grille ; cliquer une dimension
+  permet d'y répondre) et la transcription, qui défile en suivant le texte.
 - **Générer le prompt** : Claude rédige le prompt de tâche final (modifiable, copiable,
   téléchargeable en `.md`). *Copier la commande* donne `claude '…'`, à coller dans un
   terminal ouvert dans le dossier du projet. *Version brute* assemble le prompt sans IA,
@@ -214,7 +221,7 @@ session (localStorage) ─── état complet ▶ /api/export     ──▶ cla
 
 ## Tests
 
-`npm test` lance 57 tests (Node, sans dépendance, **sans appel à Claude**) : modèle de carte,
+`npm test` lance 60 tests (Node, sans dépendance, **sans appel à Claude**) : modèle de carte,
 disposition (aucun chevauchement), découpage audio et WAV, prompts et schéma, validation des
 réponses, chaîne CLI avec un faux binaire `claude` (appel ponctuel et conversation gardée
 ouverte : nouveautés seules, plantage et reprise, limite de longueur), mode démo, serveur HTTP (dont un faux

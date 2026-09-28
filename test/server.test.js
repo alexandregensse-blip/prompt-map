@@ -129,6 +129,7 @@ test('transcription : WAV relayé à whisper.cpp, texte nettoyé', async () => {
   assert.match(req.type, /multipart\/form-data/);
   assert.match(req.body, /name="language"\r\n\r\nfr/);
   assert.match(req.body, /name="response_format"\r\n\r\njson/);
+  assert.match(req.body, /name="suppress_nst"\r\n\r\ntrue/);
   assert.match(Buffer.from(req.body, 'latin1').toString('utf8'), /name="prompt"\r\n\r\nVocabulaire : pdfkit, Express\./);
 });
 
@@ -143,6 +144,11 @@ test('nettoyage des hallucinations classiques de Whisper', () => {
   assert.equal(cleanTranscript('[BLANK_AUDIO]'), '');
   assert.equal(cleanTranscript(' Ajoute un bouton   export. '), 'Ajoute un bouton export.');
   assert.equal(cleanTranscript('il faut que il faut que il faut que ça marche'), 'il faut que ça marche');
+  assert.equal(cleanTranscript('[Bruit de joie]'), '');
+  assert.equal(cleanTranscript(' (Rires) '), '');
+  assert.equal(cleanTranscript('Alors [bruit de fond] on ajoute *tousse* un export.'), 'Alors on ajoute un export.');
+  assert.equal(cleanTranscript('♪ musique ♪ Bonjour.'), 'Bonjour.');
+  assert.equal(cleanTranscript('Le module (celui que je t’ai montré hier) est fragile.'), 'Le module (celui que je t’ai montré hier) est fragile.');
 });
 
 test('configuration : fichier puis variables d’environnement', () => {
