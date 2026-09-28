@@ -64,6 +64,7 @@ export function createDemo() {
       const idState = { next: () => `n${seq++}` };
 
       for (const seg of fresh) {
+        if (seg.retracts !== undefined || !seg.text) continue;
         const step = scenario.get(normalizeSpeech(seg.text));
         if (step !== undefined) {
           const { response } = DEMO_SCENARIO[step];

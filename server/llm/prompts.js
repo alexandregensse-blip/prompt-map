@@ -24,6 +24,7 @@ La carte reflète la pensée de l'utilisateur : ses thèmes, avec ses mots. Ce n
 - Les branches principales (enfants de "root") sont ses grands thèmes : 3 à 7 au total, idéalement. Si un point relève d'un thème existant, range-le dessous plutôt que de créer une branche de plus.
 - "root" résume la tâche en quelques mots. Mets-le à jour (update, id "root") dès que l'intention se précise.
 - Quand l'utilisateur se reprend (« non, en fait… », « oublie ça », « plutôt… »), modifie ou supprime les nœuds concernés : la carte suit sa dernière version.
+- La transcription vient d'une reconnaissance vocale : corrige d'office les mots manifestement mal entendus, en particulier les termes techniques. Quand l'utilisateur corrige lui-même une phrase ou en retire une, mets la carte en accord avec sa version.
 - Les nœuds marqués « corrigé par l'utilisateur » ont été édités à la main : ne les renomme pas, ne les déplace pas, ne les supprime pas.
 - Ne recrée jamais un élément de la liste « supprimés par l'utilisateur ».
 - Stabilité avant tout : ne touche pas à ce qui est juste, pas de reformulation cosmétique. Aucune opération est une réponse valide.
@@ -121,6 +122,17 @@ export const UPDATE_SCHEMA = {
   },
 };
 
+// Une phrase de la transcription, avec son contexte (réponse, correction, retrait…).
+export function formatSegment(s, i) {
+  let tag = '';
+  if (s.retracts !== undefined) return `${i + 1}. [l'utilisateur retire sa phrase « ${s.retracts} » : enlève de la carte ce qui ne venait que d'elle]`;
+  if (s.corrects !== undefined) tag = `[l'utilisateur corrige la transcription de « ${s.corrects} », qui devient :] `;
+  else if (s.answerTo) tag = `[réponse à « ${s.answerTo} »] `;
+  else if (s.focus) tag = `[l'utilisateur veut approfondir « ${s.focus} »] `;
+  if (s.retracted) tag = `[phrase retirée ensuite] ${tag}`;
+  return `${i + 1}. ${tag}${s.text}`;
+}
+
 // Session envoyée par le client : { map, grid, suggestions, dismissed, segments, processedCount }
 // Prochain id de suggestion jamais utilisé (affichées, répondues ou écartées).
 export function nextSuggestionId(suggestions = [], usedIds = []) {
@@ -156,10 +168,7 @@ export function buildUpdateMessage(session) {
     parts.push(`## Suggestions écartées par l'utilisateur (ne pas reproposer)\n${dismissed.map((t) => `- ${t}`).join('\n')}`);
   }
 
-  const fmt = (s, i) => {
-    const tag = s.answerTo ? `[réponse à « ${s.answerTo} »] ` : s.focus ? `[l'utilisateur veut approfondir « ${s.focus} »] ` : '';
-    return `${i + 1}. ${tag}${s.text}`;
-  };
+  const fmt = formatSegment;
   const done = segments.slice(0, processedCount);
   const fresh = segments.slice(processedCount);
   parts.push(`## Transcription déjà prise en compte\n${done.length ? done.map(fmt).join('\n') : '(rien)'}`);
@@ -173,10 +182,7 @@ export function buildUpdateMessage(session) {
 export function buildDeltaMessage(session, seen) {
   const { map, suggestions = [], dismissed = [], segments = [], usedSuggestionIds = [] } = session;
   const parts = [];
-  const fmt = (s, i) => {
-    const tag = s.answerTo ? `[réponse à « ${s.answerTo} »] ` : s.focus ? `[l'utilisateur veut approfondir « ${s.focus} »] ` : '';
-    return `${i + 1}. ${tag}${s.text}`;
-  };
+  const fmt = formatSegment;
   const fresh = segments.slice(seen.segmentKeys.length);
   parts.push(`## Nouveau depuis la dernière mise à jour\n${fresh.length
     ? fresh.map((s, i) => fmt(s, i + seen.segmentKeys.length)).join('\n')
@@ -236,7 +242,7 @@ export function buildExportMessage(session) {
     `## Questions de l'agent restées sans réponse\n${suggestions.length
       ? suggestions.map((s) => `- (${s.kind}) ${s.text}`).join('\n')
       : '(aucune)'}`,
-    `## Transcription\n${segments.map((s, i) => `${i + 1}. ${s.answerTo ? `[réponse à « ${s.answerTo} »] ` : ''}${s.text}`).join('\n') || '(vide)'}`,
+    `## Transcription\n${segments.map(formatSegment).join('\n') || '(vide)'}`,
     'Rédige le prompt de tâche final.',
   ].join('\n\n');
 }

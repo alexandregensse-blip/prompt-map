@@ -28,7 +28,7 @@ export const api = {
   demoScript: () => call('GET', '/api/demo-script'),
   update: (session, demo) => call('POST', '/api/update', { session: payload(session), demo }),
   export: (session, { demo, draft } = {}) => call('POST', '/api/export', { session: payload(session), demo, draft }),
-  transcribe: (wav) => call('POST', '/api/transcribe', wav),
+  transcribe: (wav, prompt = '') => call('POST', '/api/transcribe', wav, { 'x-whisper-prompt': encodeURIComponent(prompt) }),
   // Démarre la conversation Claude à l'avance : la première mise à jour n'attend pas la CLI.
   warmup: (session) => call('POST', '/api/warmup', { sessionId: session.id, demo: session.demo }).catch(() => {}),
 };

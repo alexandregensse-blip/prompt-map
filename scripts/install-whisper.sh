@@ -1,32 +1,48 @@
 #!/usr/bin/env bash
 # Installe whisper.cpp (whisper-server) et un modèle dans .whisper/ (ignoré par git).
-# Modèle par défaut : large-v3-turbo-q5_0 (~550 Mo, très bon en français).
-# Machine lente sans GPU : WHISPER_MODEL=small npm run whisper:install
+# Modèle choisi selon la machine, modifiable avec WHISPER_MODEL=… :
+#   - GPU (CUDA, Apple Silicon) ou 8 cœurs et plus : large-v3-turbo-q5_0 (~550 Mo, le plus précis)
+#   - sinon : small-q5_1 (~190 Mo, ~5x plus rapide, très correct en français avec le vocabulaire)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 DIR=.whisper
-MODEL="${WHISPER_MODEL:-large-v3-turbo-q5_0}"
 mkdir -p "$DIR/models"
+
+CORES=$( (nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4) )
+if [ -n "${WHISPER_MODEL:-}" ]; then
+  MODEL="$WHISPER_MODEL"
+elif command -v nvcc >/dev/null 2>&1 || [ "$(uname -sm)" = "Darwin arm64" ] || [ "$CORES" -ge 8 ]; then
+  MODEL=large-v3-turbo-q5_0
+else
+  MODEL=small-q5_1
+fi
+echo "→ Modèle retenu : $MODEL ($CORES cœurs)"
 
 if command -v whisper-server >/dev/null 2>&1; then
   echo "✓ whisper-server déjà installé : $(command -v whisper-server)"
 elif [ -x "$DIR/whisper.cpp/build/bin/whisper-server" ]; then
   echo "✓ whisper-server déjà compilé"
 else
-  for tool in git cmake c++; do
-    if ! command -v "$tool" >/dev/null 2>&1; then
-      echo "✗ Il manque « $tool » pour compiler whisper.cpp."
-      echo "  Debian/Ubuntu : sudo apt install git cmake build-essential"
-      echo "  macOS         : xcode-select --install && brew install cmake"
-      exit 1
-    fi
-  done
+  missing=()
+  for tool in git cmake c++; do command -v "$tool" >/dev/null 2>&1 || missing+=("$tool"); done
+  command -v make >/dev/null 2>&1 || command -v ninja >/dev/null 2>&1 || missing+=("make (ou ninja)")
+  if [ ${#missing[@]} -gt 0 ]; then
+    echo "✗ Pour compiler whisper.cpp, il manque : ${missing[*]}"
+    echo "  Debian/Ubuntu : sudo apt install git cmake build-essential"
+    echo "  macOS         : xcode-select --install && brew install cmake"
+    echo "  Sans droits administrateur : pip install --user cmake ninja ziglang"
+    echo "  (puis un compilateur « c++ » qui appelle « python -m ziglang c++ »)"
+    exit 1
+  fi
   [ -d "$DIR/whisper.cpp" ] || git clone --depth 1 https://github.com/ggml-org/whisper.cpp "$DIR/whisper.cpp"
   EXTRA=()
+  # Sans make, on génère pour ninja.
+  if ! command -v make >/dev/null 2>&1; then EXTRA+=(-G Ninja); fi
   # GPU Nvidia : accélération CUDA si le compilateur CUDA est présent.
   if command -v nvcc >/dev/null 2>&1; then EXTRA+=(-DGGML_CUDA=1); echo "→ CUDA détecté"; fi
-  cmake -S "$DIR/whisper.cpp" -B "$DIR/whisper.cpp/build" -DCMAKE_BUILD_TYPE=Release ${EXTRA[@]+"${EXTRA[@]}"}
+  # Binaire autonome (bibliothèques liées en statique) : rien à installer à côté.
+  cmake -S "$DIR/whisper.cpp" -B "$DIR/whisper.cpp/build" -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF ${EXTRA[@]+"${EXTRA[@]}"}
   cmake --build "$DIR/whisper.cpp/build" -j --config Release --target whisper-server
   echo "✓ whisper-server compilé"
 fi
@@ -41,5 +57,6 @@ else
   echo "✓ Modèle téléchargé : $FILE"
 fi
 
+echo "$MODEL" > "$DIR/model"
 echo
 echo "Prêt. Lance Whisper avec : npm run whisper"

@@ -4,7 +4,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 DIR=.whisper
-MODEL="${WHISPER_MODEL:-large-v3-turbo-q5_0}"
+# Modèle : WHISPER_MODEL, sinon celui retenu à l'installation.
+MODEL="${WHISPER_MODEL:-$(cat "$DIR/model" 2>/dev/null || echo large-v3-turbo-q5_0)}"
 PORT="${WHISPER_PORT:-8178}"
 LANGUAGE="${PROMPTMAP_LANGUAGE:-fr}"
 FILE="$DIR/models/ggml-$MODEL.bin"

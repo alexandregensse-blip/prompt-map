@@ -54,6 +54,7 @@ const mapView = createMapView($('map'), {
   onSelect: () => positionToolbar(),
   onViewChange: () => { positionToolbar(); positionRename(); },
   onRequestRename: (id) => startRename(id),
+  onMove: (id, parent) => userOps([{ op: 'move', id, parent }]),
 });
 
 function userOps(ops) {
@@ -61,6 +62,17 @@ function userOps(ops) {
   session.map = map;
   save();
   renderMap(changes);
+  return changes;
+}
+
+// Ajout manuel : un point sous le nœud choisi, aussitôt en cours de renommage.
+function addChild(parentId) {
+  const before = session.map;
+  const changes = userOps([{ op: 'add', parent: parentId, label: 'Nouveau point' }]);
+  const id = changes.added[0];
+  if (!id) return;
+  mapView.select(id);
+  startRename(id, before);
 }
 
 function renderMap(changes) {
@@ -80,10 +92,16 @@ function positionToolbar() {
   const box = id && mapView.screenBox(id);
   if (!box || !$('rename-input').hidden) { toolbar.hidden = true; return; }
   toolbar.hidden = false;
-  toolbar.style.left = `${box.x}px`;
-  toolbar.style.top = `${box.y - box.h / 2}px`;
+  // Centrée au-dessus du nœud, sans déborder du canevas.
+  const half = toolbar.offsetWidth / 2;
+  const width = $('canvas').clientWidth;
+  toolbar.style.left = `${Math.min(Math.max(box.x, half + 8), width - half - 8)}px`;
+  toolbar.style.top = `${Math.max(box.y - box.h / 2, toolbar.offsetHeight + 18)}px`;
   toolbar.querySelector('[data-action="delete"]').hidden = id === ROOT_ID;
   toolbar.querySelector('[data-action="focus"]').hidden = id === ROOT_ID;
+  const detail = session.map.nodes[id]?.detail || '';
+  $('node-detail').hidden = !detail;
+  $('node-detail').textContent = detail;
 }
 
 toolbar.addEventListener('click', (e) => {
@@ -91,6 +109,7 @@ toolbar.addEventListener('click', (e) => {
   const id = mapView.selected;
   if (!action || !id) return;
   if (action === 'rename') startRename(id);
+  if (action === 'add') addChild(id);
   if (action === 'delete') deleteNode(id);
   if (action === 'focus') {
     addSegment({ text: 'Aide-moi à approfondir ce point.', focus: session.map.nodes[id].label });
@@ -113,9 +132,11 @@ function deleteNode(id) {
 
 const renameInput = $('rename-input');
 let renaming = null;
-function startRename(id) {
+let renameUndo = null; // carte d'avant un ajout : Échap annule l'ajout
+function startRename(id, undoMap = null) {
   if (!session.map.nodes[id]) return;
   renaming = id;
+  renameUndo = undoMap;
   renameInput.value = session.map.nodes[id].label;
   renameInput.hidden = false;
   positionRename();
@@ -137,7 +158,15 @@ function endRename(commit) {
   renaming = null;
   renameInput.hidden = true;
   const label = renameInput.value.trim();
-  if (commit && label && label !== session.map.nodes[id]?.label) userOps([{ op: 'update', id, label }]);
+  const undo = renameUndo;
+  renameUndo = null;
+  if (undo && (!commit || !label)) {
+    session.map = undo;
+    save();
+    renderMap({});
+  } else if (commit && label && label !== session.map.nodes[id]?.label) {
+    userOps([{ op: 'update', id, label }]);
+  }
   positionToolbar();
 }
 renameInput.addEventListener('keydown', (e) => {
@@ -311,18 +340,39 @@ function renderTranscript() {
     list.append(li);
   }
   for (const s of session.segments) {
+    // Corrections et retraits s'affichent sur la phrase d'origine.
+    if (s.corrects !== undefined || s.retracts !== undefined) continue;
     const li = document.createElement('li');
     if (s.focus) {
       li.className = 'focus';
       li.textContent = `Tu as demandé d’approfondir « ${s.focus} ».`;
     } else {
+      li.className = `seg${s.retracted ? ' retracted' : ''}`;
       if (s.answerTo) {
         const tag = document.createElement('span');
         tag.className = 'tag';
         tag.textContent = `↳ ${s.answerTo}`;
         li.append(tag);
       }
-      li.append(document.createTextNode(s.text));
+      const text = document.createElement('span');
+      text.className = 'seg-text';
+      text.textContent = s.text;
+      li.append(text);
+      if (s.edited) {
+        const mark = document.createElement('span');
+        mark.className = 'edited';
+        mark.textContent = 'corrigée';
+        li.append(mark);
+      }
+      if (!s.retracted) {
+        const actions = document.createElement('span');
+        actions.className = 'seg-actions';
+        actions.innerHTML = '<button type="button" title="Corriger la transcription">✎</button><button type="button" title="Retirer cette phrase">✕</button>';
+        const [edit, remove] = actions.querySelectorAll('button');
+        edit.addEventListener('click', () => editSegment(s, li));
+        remove.addEventListener('click', () => retractSegment(s));
+        li.append(actions);
+      }
     }
     list.append(li);
   }
@@ -332,6 +382,56 @@ function renderTranscript() {
     li.textContent = `Transcription (${p.duration.toFixed(1)} s)`;
     list.append(li);
   }
+}
+
+// Whisper se trompe parfois : on corrige la phrase, et l'agent remet la carte en accord.
+function editSegment(seg, li) {
+  const area = document.createElement('textarea');
+  area.className = 'seg-edit';
+  area.value = seg.text;
+  area.rows = Math.max(2, Math.ceil(seg.text.length / 42));
+  li.replaceChildren(area);
+  area.focus();
+  area.setSelectionRange(area.value.length, area.value.length);
+  let done = false;
+  const finish = (commit) => {
+    if (done) return;
+    done = true;
+    const text = area.value.replace(/\s+/g, ' ').trim();
+    if (commit && text && text !== seg.text) {
+      const old = seg.text;
+      seg.text = text;
+      seg.edited = true;
+      session.segments.push({ id: uid(), text, corrects: old, at: Date.now() });
+      save();
+      scheduleUpdate();
+    }
+    renderTranscript();
+  };
+  area.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); finish(true); }
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(false); }
+  });
+  area.addEventListener('blur', () => finish(true));
+}
+
+function retractSegment(seg) {
+  seg.retracted = true;
+  session.segments.push({ id: uid(), text: '', retracts: seg.text, at: Date.now() });
+  save();
+  renderTranscript();
+  scheduleUpdate();
+  toast('Phrase retirée : l’agent retire de la carte ce qui venait d’elle.');
+}
+
+// Indice pour Whisper : les termes de la carte et la dernière phrase dite.
+function whisperPrompt() {
+  const labels = Object.values(session.map.nodes)
+    .filter((n) => !(n.id === ROOT_ID && n.label === DEFAULT_TITLE))
+    .map((n) => n.label);
+  const vocab = [...new Set(labels)].join(', ').slice(0, 400);
+  const last = session.segments.filter((s) => s.text && s.retracts === undefined && !s.focus).at(-1)?.text || '';
+  return [vocab && `Vocabulaire : ${vocab}.`, last].filter(Boolean).join(' ');
 }
 
 // ---------- Saisie : texte et micro ----------
@@ -344,7 +444,15 @@ $('composer-form').addEventListener('submit', (e) => {
 });
 
 const caption = $('caption');
+let captionTimer = null;
+// Montre un instant ce que Whisper a compris.
+function flashCaption(text) {
+  if (demoRunning) return;
+  showCaption(text);
+  captionTimer = setTimeout(() => { if (caption.textContent === text) showCaption(''); }, 2800);
+}
 function showCaption(text, listening = false) {
+  clearTimeout(captionTimer);
   caption.hidden = !text;
   caption.textContent = text || '';
   caption.classList.toggle('listening', listening);
@@ -365,10 +473,12 @@ const mic = new MicCapture({
     renderMap({});
     transcribeQueue = transcribeQueue.then(async () => {
       try {
-        const { text } = await api.transcribe(wav);
+        const { text } = await api.transcribe(wav, whisperPrompt());
         pending = pending.filter((p) => p !== job);
-        if (text) addSegment({ text, answerTo: target });
-        else renderTranscript();
+        if (text) {
+          addSegment({ text, answerTo: target });
+          flashCaption(`« ${text} »`);
+        } else renderTranscript();
       } catch (err) {
         pending = pending.filter((p) => p !== job);
         renderTranscript();
@@ -456,6 +566,16 @@ $('export-copy').addEventListener('click', async () => {
     $('export-text').select();
     document.execCommand('copy');
     toast('Prompt copié.');
+  }
+});
+$('export-command').addEventListener('click', async () => {
+  const prompt = $('export-text').value;
+  const command = `claude '${prompt.replace(/'/g, "'\\''")}'`;
+  try {
+    await navigator.clipboard.writeText(command);
+    toast('Commande copiée : colle-la dans un terminal ouvert dans le dossier du projet.');
+  } catch {
+    toast('Copie impossible ici : utilise « Copier ».', { error: true });
   }
 });
 $('export-download').addEventListener('click', () => {
@@ -607,6 +727,7 @@ document.addEventListener('keydown', (e) => {
   else if (e.key === '/') { e.preventDefault(); $('text-input').focus(); }
   else if ((e.key === 'Delete' || e.key === 'Backspace') && mapView.selected) { e.preventDefault(); deleteNode(mapView.selected); }
   else if ((e.key === 'Enter' || e.key === 'F2') && mapView.selected) { e.preventDefault(); startRename(mapView.selected); }
+  else if (e.key === 'Tab' && mapView.selected) { e.preventDefault(); addChild(mapView.selected); }
 });
 
 setMicUi(false);

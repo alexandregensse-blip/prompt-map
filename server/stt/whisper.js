@@ -26,11 +26,14 @@ export function isOpenAiStyle(url) {
   return /\/v1\/audio\/transcriptions\/?$/.test(new URL(url).pathname);
 }
 
-export async function transcribe(wav, cfg) {
+// prompt : indice de vocabulaire (termes de la carte, phrase précédente) pour que Whisper
+// reconnaisse mieux les noms propres et les termes techniques.
+export async function transcribe(wav, cfg, { prompt = '' } = {}) {
   const form = new FormData();
   form.append('file', new Blob([wav], { type: 'audio/wav' }), 'segment.wav');
   form.append('response_format', 'json');
   form.append('language', cfg.language);
+  if (prompt) form.append('prompt', prompt.slice(0, 800));
   if (isOpenAiStyle(cfg.whisperUrl)) {
     form.append('model', cfg.whisperModel || 'whisper-1');
   } else {

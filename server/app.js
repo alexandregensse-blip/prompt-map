@@ -117,7 +117,9 @@ export function createApp(cfg, providers, { log = console } = {}) {
         throw Object.assign(new Error('Audio WAV attendu'), { status: 400 });
       }
       const started = Date.now();
-      const text = await transcribe(wav, cfg);
+      let prompt = '';
+      try { prompt = decodeURIComponent(req.headers['x-whisper-prompt'] || ''); } catch { /* en-tête illisible : ignoré */ }
+      const text = await transcribe(wav, cfg, { prompt });
       log.info?.(`[stt] ${Date.now() - started} ms · « ${text.slice(0, 60)} »`);
       return { text };
     },

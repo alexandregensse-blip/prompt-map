@@ -4,7 +4,7 @@ import { readFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildUpdateMessage, buildExportMessage, nextSuggestionId, UPDATE_SCHEMA, UPDATE_SYSTEM } from '../server/llm/prompts.js';
+import { buildUpdateMessage, buildExportMessage, nextSuggestionId, formatSegment, UPDATE_SCHEMA, UPDATE_SYSTEM } from '../server/llm/prompts.js';
 import { normalizeUpdate, extractJson } from '../server/llm/normalize.js';
 import { buildArgs, parseCliOutput, createClaudeCli } from '../server/llm/claude-cli.js';
 import { createDemo } from '../server/llm/demo.js';
@@ -38,6 +38,14 @@ test('message de mise à jour : carte, id suivant, ancien et nouveau séparés',
   assert.match(msg, /- \[s2\] \(question, critere_fin\)/);
   assert.match(msg, /Prochain id de suggestion libre : s3/);
   assert.match(msg, /ne pas reproposer\)\n- Question ignorée/);
+});
+
+test('phrases : réponse, approfondissement, correction et retrait', () => {
+  assert.equal(formatSegment({ text: 'Oui.', answerTo: 'Q ?' }, 0), '1. [réponse à « Q ? »] Oui.');
+  assert.equal(formatSegment({ text: 'Aide-moi.', focus: 'pdfkit' }, 1), '2. [l\'utilisateur veut approfondir « pdfkit »] Aide-moi.');
+  assert.equal(formatSegment({ text: 'freelance', corrects: 'frilance' }, 2), '3. [l\'utilisateur corrige la transcription de « frilance », qui devient :] freelance');
+  assert.match(formatSegment({ text: '', retracts: 'Puppeteer' }, 3), /^4\. \[l'utilisateur retire sa phrase « Puppeteer » : enlève de la carte/);
+  assert.equal(formatSegment({ text: 'Puppeteer', retracted: true }, 4), '5. [phrase retirée ensuite] Puppeteer');
 });
 
 test('prochain id de suggestion : jamais un id déjà utilisé', () => {

@@ -102,13 +102,18 @@ test('export : version brute sans IA', async () => {
 test('transcription : WAV relayé à whisper.cpp, texte nettoyé', async () => {
   whisperRequests = [];
   const wav = encodeWav(new Float32Array(1600));
-  const res = await fetch(`${base}/api/transcribe`, { method: 'POST', headers: { 'content-type': 'audio/wav' }, body: wav });
+  const res = await fetch(`${base}/api/transcribe`, {
+    method: 'POST',
+    headers: { 'content-type': 'audio/wav', 'x-whisper-prompt': encodeURIComponent('Vocabulaire : pdfkit, Express.') },
+    body: wav,
+  });
   assert.deepEqual(await res.json(), { text: 'Bonjour, je voudrais un export PDF.' });
   const req = whisperRequests[0];
   assert.equal(req.url, '/inference');
   assert.match(req.type, /multipart\/form-data/);
   assert.match(req.body, /name="language"\r\n\r\nfr/);
   assert.match(req.body, /name="response_format"\r\n\r\njson/);
+  assert.match(Buffer.from(req.body, 'latin1').toString('utf8'), /name="prompt"\r\n\r\nVocabulaire : pdfkit, Express\./);
 });
 
 test('transcription : refuse ce qui n’est pas un WAV', async () => {

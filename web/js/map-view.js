@@ -2,7 +2,7 @@
 // de déplacement et de sortie, zoom et déplacement à la souris ou au pavé tactile.
 
 import { layoutMap, styleFor, STYLE } from './shared/layout.js';
-import { ROOT_ID } from './shared/map-model.js';
+import { ROOT_ID, isDescendant } from './shared/map-model.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
 const FONT = getComputedStyle(document.documentElement).getPropertyValue('--font').trim() || 'sans-serif';
@@ -43,6 +43,7 @@ export function createMapView(svg, handlers = {}) {
   const nodeEls = new Map();
   const edgeEls = new Map();
   let layout = null;
+  let currentMap = null;
   let selected = null;
   let linked = null;
   let follow = true;
@@ -75,6 +76,7 @@ export function createMapView(svg, handlers = {}) {
   }
 
   function render(map, changes = {}) {
+    currentMap = map;
     const prev = layout;
     layout = layoutMap(map, measure);
     const added = new Set(changes.added || []);
@@ -217,15 +219,51 @@ export function createMapView(svg, handlers = {}) {
     applyView(animate);
   }
 
-  // Interactions
+  // Interactions : glisser le fond déplace la vue, glisser un nœud le range ailleurs.
   let drag = null;
+  let nodeDrag = null;
+  let suppressClick = false;
+
+  const toMap = (e) => {
+    const r = svg.getBoundingClientRect();
+    return { x: (e.clientX - r.left - view.x) / view.k, y: (e.clientY - r.top - view.y) / view.k };
+  };
+  const setDropTarget = (id) => {
+    if (nodeDrag.target === id) return;
+    nodeEls.get(nodeDrag.target)?.classList.remove('drop-target');
+    nodeDrag.target = id;
+    nodeEls.get(id)?.classList.add('drop-target');
+  };
+
   svg.addEventListener('pointerdown', (e) => {
     const g = e.target.closest('.node');
-    if (g) return;
+    if (g) {
+      if (g.dataset.id !== ROOT_ID && handlers.onMove && e.button === 0) {
+        // Pas de capture tout de suite : un simple clic doit arriver au nœud.
+        nodeDrag = { id: g.dataset.id, g, x: e.clientX, y: e.clientY, moved: false, target: null, pointerId: e.pointerId };
+      }
+      return;
+    }
     drag = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y, moved: false };
     svg.setPointerCapture(e.pointerId);
   });
   svg.addEventListener('pointermove', (e) => {
+    if (nodeDrag) {
+      if (!nodeDrag.moved && Math.hypot(e.clientX - nodeDrag.x, e.clientY - nodeDrag.y) < 6) return;
+      if (!nodeDrag.moved) {
+        svg.setPointerCapture(nodeDrag.pointerId);
+        select(null);
+      }
+      nodeDrag.moved = true;
+      nodeDrag.g.classList.add('dragging');
+      const p = toMap(e);
+      setTransform(nodeDrag.g, p.x, p.y);
+      const over = document.elementFromPoint(e.clientX, e.clientY)?.closest('.node')?.dataset.id;
+      const valid = over && over !== nodeDrag.id && over !== currentMap.nodes[nodeDrag.id]?.parent
+        && !isDescendant(currentMap, over, nodeDrag.id);
+      setDropTarget(valid ? over : null);
+      return;
+    }
     if (!drag) return;
     const dx = e.clientX - drag.x;
     const dy = e.clientY - drag.y;
@@ -238,6 +276,19 @@ export function createMapView(svg, handlers = {}) {
     applyView(false);
   });
   const endDrag = () => {
+    if (nodeDrag) {
+      const { id, g, moved, target } = nodeDrag;
+      nodeEls.get(target)?.classList.remove('drop-target');
+      g.classList.remove('dragging');
+      nodeDrag = null;
+      if (moved) {
+        suppressClick = true;
+        setTimeout(() => { suppressClick = false; }, 0);
+        if (target) handlers.onMove(id, target);
+        else if (layout?.boxes[id]) setTransform(g, layout.boxes[id].x, layout.boxes[id].y);
+      }
+      return;
+    }
     if (drag && !drag.moved) select(null);
     drag = null;
     svg.classList.remove('panning');
@@ -263,6 +314,7 @@ export function createMapView(svg, handlers = {}) {
   }, { passive: false });
 
   nodesLayer.addEventListener('click', (e) => {
+    if (suppressClick) return;
     const g = e.target.closest('.node');
     if (g) select(g.dataset.id === selected ? null : g.dataset.id);
   });

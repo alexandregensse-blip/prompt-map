@@ -61,6 +61,25 @@ test('les corrections de l’utilisateur sont protégées contre le LLM', () => 
   assert.equal(res.map.nodes.n1.label, 'Puppeteer');
 });
 
+test('un nœud déplacé par l’utilisateur n’est plus déplacé par le LLM', () => {
+  let { map } = applyOps(createMap(), [
+    { op: 'add', id: 'n1', parent: 'root', label: 'A' },
+    { op: 'add', id: 'n2', parent: 'root', label: 'B' },
+    { op: 'add', id: 'n3', parent: 'n1', label: 'Détail' },
+  ]);
+  ({ map } = applyOps(map, [{ op: 'move', id: 'n3', parent: 'n2' }], { origin: 'user' }));
+  assert.equal(map.nodes.n3.locked, true);
+  const res = applyOps(map, [{ op: 'move', id: 'n3', parent: 'n1' }]);
+  assert.equal(res.rejected[0].reason, 'nœud corrigé par l’utilisateur');
+});
+
+test('ajout manuel : id généré, nœud protégé', () => {
+  const { map, changes } = applyOps(createMap(), [{ op: 'add', parent: 'root', label: 'Mon point' }], { origin: 'user' });
+  const id = changes.added[0];
+  assert.match(id, /^n\d+$/);
+  assert.equal(map.nodes[id].locked, true);
+});
+
 test('un nœud supprimé par l’utilisateur n’est pas recréé par le LLM', () => {
   let { map } = applyOps(createMap(), [{ op: 'add', id: 'n1', parent: 'root', label: 'Mauvaise idée' }]);
   ({ map } = applyOps(map, [{ op: 'remove', id: 'n1' }], { origin: 'user' }));

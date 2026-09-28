@@ -151,6 +151,7 @@ export function applyOps(map, ops, { origin = 'ai' } = {}) {
         if (node.parent === parentId) break;
         node.parent = parentId;
         node.order = next.seq++;
+        if (origin === 'user') node.locked = true;
         reparentBranch(next, node);
         changes.moved.push(node.id);
         break;

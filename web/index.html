@@ -57,9 +57,13 @@
       </div>
 
       <div class="node-toolbar" id="node-toolbar" hidden>
-        <button type="button" data-action="rename" title="Renommer (Entrée)">Renommer</button>
-        <button type="button" data-action="focus" title="Demander à l'agent d'approfondir ce point">Creuser</button>
-        <button type="button" data-action="delete" class="danger" title="Supprimer (Suppr)">Supprimer</button>
+        <div class="node-actions">
+          <button type="button" data-action="rename" title="Renommer (Entrée)">Renommer</button>
+          <button type="button" data-action="add" title="Ajouter un point dessous (Tab)">Ajouter</button>
+          <button type="button" data-action="focus" title="Demander à l'agent d'approfondir ce point">Creuser</button>
+          <button type="button" data-action="delete" class="danger" title="Supprimer (Suppr)">Supprimer</button>
+        </div>
+        <p class="node-detail" id="node-detail" hidden></p>
       </div>
       <input class="rename-input" id="rename-input" type="text" hidden>
 
@@ -132,6 +136,7 @@
         <button class="btn ghost" type="button" id="export-draft" title="Assemblé directement depuis la carte, sans IA">Version brute</button>
         <button class="btn ghost" type="button" id="export-regen">Régénérer</button>
         <span class="spacer"></span>
+        <button class="btn" type="button" id="export-command" title="Copie « claude '…' » : à coller dans un terminal, dans le dossier du projet">Copier la commande</button>
         <button class="btn" type="button" id="export-download">Télécharger .md</button>
         <button class="btn primary" type="button" id="export-copy">Copier</button>
       </footer>

@@ -90,27 +90,42 @@ npm test           # tests automatiques (sans appel à Claude)
 Pour parler (sinon, on écrit dans la barre du bas) :
 
 ```bash
-npm run whisper:install   # une fois : compile whisper.cpp et télécharge le modèle (~550 Mo)
+npm run whisper:install   # une fois : compile whisper.cpp et télécharge le modèle
 npm run whisper           # à laisser tourner dans un terminal à côté
 ```
 
-`whisper:install` demande `git`, `cmake` et un compilateur C++. Machine lente :
-`WHISPER_MODEL=small npm run whisper:install` puis `WHISPER_MODEL=small npm run whisper`.
+`whisper:install` demande `git`, `cmake`, `make` (ou `ninja`) et un compilateur C++, et
+produit un binaire autonome. Le modèle est choisi selon la machine : `large-v3-turbo-q5_0`
+(~550 Mo, le plus précis) avec un GPU ou 8 cœurs et plus, sinon `small-q5_1` (~190 Mo,
+environ 5 fois plus rapide). `WHISPER_MODEL=…` impose un autre modèle.
+
+Sans droits administrateur, tout s'installe en espace utilisateur :
+`pip install --user cmake ninja ziglang`, avec de petits scripts `cc`, `c++`, `ar` et
+`ranlib` qui appellent `python -m ziglang cc` (resp. `c++`, `ar`, `ranlib`), placés en tête
+du `PATH`.
 
 ## Utilisation
 
 - **Parler** : bouton micro ou <kbd>Espace</kbd>. Le texte est découpé aux pauses et
   transcrit phrase par phrase. **Écrire** : <kbd>/</kbd> puis <kbd>Entrée</kbd>.
-- **Carte** : molette ou pincement pour zoomer, glisser pour se déplacer. Clic sur un nœud :
-  *Renommer* (ou double-clic, <kbd>Entrée</kbd>), *Creuser* (demande à l'agent
-  d'approfondir), *Supprimer* (<kbd>Suppr</kbd>, avec annulation). Un nœud corrigé à la main
-  porte une pastille : l'agent n'y touche plus, et ne recrée pas ce qui a été supprimé.
+- **Carte** : molette ou pincement pour zoomer, glisser le fond pour se déplacer. Clic sur
+  un nœud : son détail s'affiche, avec *Renommer* (ou double-clic, <kbd>Entrée</kbd>),
+  *Ajouter* un point dessous (<kbd>Tab</kbd>), *Creuser* (demande à l'agent d'approfondir),
+  *Supprimer* (<kbd>Suppr</kbd>, avec annulation). Glisser un nœud sur un autre l'y range.
+  Un nœud créé, renommé ou déplacé à la main porte une pastille : l'agent n'y touche plus,
+  et ne recrée pas ce qui a été supprimé.
+- **Transcription** : survoler une phrase propose ✎ (corriger ce que Whisper a mal compris)
+  et ✕ (retirer la phrase). L'agent remet la carte en accord. Après chaque phrase dite, la
+  bulle montre un instant ce que Whisper a compris. Les termes de la carte sont transmis à
+  Whisper comme vocabulaire, pour mieux reconnaître les noms techniques.
 - **Suggestions** : *Répondre* rattache ta prochaine phrase à la question ; *Ignorer* l'écarte
   pour de bon. Survoler une suggestion met en évidence le nœud concerné.
 - **Couverture** : l'état des 8 dimensions de la grille. Cliquer une dimension permet d'y
   répondre directement.
 - **Générer le prompt** : Claude rédige le prompt de tâche final (modifiable, copiable,
-  téléchargeable en `.md`). *Version brute* l'assemble sans IA, instantanément.
+  téléchargeable en `.md`). *Copier la commande* donne `claude '…'`, à coller dans un
+  terminal ouvert dans le dossier du projet. *Version brute* assemble le prompt sans IA,
+  instantanément.
 - **Voir la démo** (écran d'accueil) : rejoue un scénario complet sans IA. Une session de démo
   reste en mode démo ; *Nouvelle* repart en mode normal.
 - La session est sauvegardée dans le navigateur et survit à un rechargement.
@@ -178,16 +193,18 @@ session (localStorage) ─── état complet ▶ /api/export     ──▶ cla
 
 ## Tests
 
-`npm test` lance 53 tests (Node, sans dépendance, **sans appel à Claude**) : modèle de carte,
+`npm test` lance 56 tests (Node, sans dépendance, **sans appel à Claude**) : modèle de carte,
 disposition (aucun chevauchement), découpage audio et WAV, prompts et schéma, validation des
 réponses, chaîne CLI avec un faux binaire `claude` (appel ponctuel et conversation gardée
 ouverte : nouveautés seules, plantage et reprise, limite de longueur), mode démo, serveur HTTP (dont un faux
 serveur whisper.cpp et le refus des appels d'un autre site).
 
 Vérifié en plus pendant le développement (hors suite automatique) : parcours complet dans
-Chromium sans erreur JS (démo, export, renommage, réponse, rechargement, thème sombre, écran
-étroit) et micro réel dans le navigateur, avec de la parole française transcrite par
-whisper.cpp.
+Chromium sans erreur JS (démo, export, renommage, ajout et glisser-déposer de nœuds,
+correction et retrait de phrases, réponse, rechargement, thème sombre, écran étroit), et
+chaîne audio réelle : `npm run whisper:install` puis `npm run whisper`, parole française
+injectée comme micro de Chromium, transcrite par `whisper-server` (~5 s par phrase avec
+`small-q5_1` sur 2 cœurs, ~23 s avec `large-v3-turbo`).
 
 ## Limites connues
 
@@ -200,7 +217,10 @@ whisper.cpp.
   le désactive.
 - Latence : le terminal du serveur affiche la durée de chaque mise à jour. Leviers :
   `PROMPTMAP_MODEL=sonnet`, effort `low` (défaut).
-- Scripts Whisper vérifiés sur Linux (messages d'erreur) mais pas compilés ici ; Windows non
-  pris en charge par les scripts (whisper.cpp s'y installe à la main).
+- Scripts Whisper éprouvés sur Linux (compilation complète avec zig, cmake et ninja) ;
+  macOS non essayé ; Windows non pris en charge par les scripts (whisper.cpp s'y installe
+  à la main).
+- La première phrase n'a pas encore de vocabulaire : un terme rare peut y être mal compris
+  (à corriger avec ✎, ou laissé à Claude, qui corrige les mots manifestement mal entendus).
 - Le mode démo sans IA range les phrases libres par mots-clés : c'est un aperçu, pas une analyse.
 - Découpage audio par énergie : un bruit de fond fort et continu peut gêner la détection des pauses.
