@@ -44,6 +44,45 @@ export function parseCliOutput(stdout) {
   return envelope;
 }
 
+// Consommation d'un appel, lue dans l'événement « result » de la CLI.
+// Lecture défensive : usage (format de l'API) sinon modelUsage (par modèle).
+export function usageOf(event, knownModel = null) {
+  const num = (v) => (Number.isFinite(v) ? v : 0);
+  const perModel = event?.modelUsage && typeof event.modelUsage === 'object' ? event.modelUsage : {};
+  const model = knownModel || Object.keys(perModel)[0] || null;
+  const u = event?.usage;
+  let tokens;
+  if (u && typeof u === 'object') {
+    tokens = {
+      input: num(u.input_tokens),
+      output: num(u.output_tokens),
+      cacheRead: num(u.cache_read_input_tokens),
+      cacheWrite: num(u.cache_creation_input_tokens),
+    };
+  } else {
+    tokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+    for (const m of Object.values(perModel)) {
+      tokens.input += num(m.inputTokens);
+      tokens.output += num(m.outputTokens);
+      tokens.cacheRead += num(m.cacheReadInputTokens);
+      tokens.cacheWrite += num(m.cacheCreationInputTokens);
+    }
+  }
+  const window = Number(perModel[model]?.contextWindow ?? Object.values(perModel)[0]?.contextWindow) || null;
+  return {
+    model,
+    ...tokens,
+    contextWindow: window,
+    costUsd: Number.isFinite(event?.total_cost_usd) ? event.total_cost_usd : null,
+    durationMs: num(event?.duration_ms),
+  };
+}
+
+export function formatUsage(u) {
+  const k = (n) => (n >= 1000 ? `${(n / 1000).toFixed(1)} k` : String(n));
+  return `${u.model || 'modèle ?'} · entrée ${k(u.input)} + cache ${k(u.cacheRead)} lus / ${k(u.cacheWrite)} écrits · sortie ${k(u.output)}`;
+}
+
 export function runClaude({ bin, prompt, timeoutMs, ...opts }) {
   mkdirSync(WORK_DIR, { recursive: true });
   return new Promise((resolve, reject) => {
@@ -104,6 +143,11 @@ export function createClaudeCli(cfg, { log = console, limits } = {}) {
     if (!data) throw new Error('Réponse de Claude sans JSON exploitable');
     return normalizeUpdate(data, session.grid);
   };
+  const meta = (envelope, mode, effort, model = null) => {
+    const usage = usageOf(envelope, model || cfg.model || null);
+    log.info?.(`[claude] ${mode} · ${formatUsage(usage)}`);
+    return { mode, effort: effort || 'défaut', usage };
+  };
 
   // Appel ponctuel : un processus par mise à jour, avec l'état complet.
   async function oneShot(session) {
@@ -123,7 +167,7 @@ export function createClaudeCli(cfg, { log = console, limits } = {}) {
       useSchema = false;
       envelope = await call(null);
     }
-    return parse(envelope, session);
+    return { ...parse(envelope, session), meta: meta(envelope, 'ponctuel', cfg.updateEffort) };
   }
 
   return {
@@ -134,11 +178,11 @@ export function createClaudeCli(cfg, { log = console, limits } = {}) {
     async update(session) {
       if (useStream() && session.sessionId) {
         try {
-          const { event, commit } = await pool.send(session);
+          const { event, commit, model } = await pool.send(session);
           const result = parse(event, session);
           commit(result);
           streamFailures = 0;
-          return result;
+          return { ...result, meta: meta(event, 'conversation', cfg.updateEffort, model) };
         } catch (err) {
           pool.drop(session.sessionId);
           streamFailures += 1;
@@ -157,7 +201,10 @@ export function createClaudeCli(cfg, { log = console, limits } = {}) {
       });
       const text = String(envelope.result || '').trim();
       if (!text) throw new Error('Claude a renvoyé un prompt vide');
-      return { prompt: text.replace(/^```(?:markdown|md)?\n([\s\S]*)\n```$/, '$1') };
+      return {
+        prompt: text.replace(/^```(?:markdown|md)?\n([\s\S]*)\n```$/, '$1'),
+        meta: meta(envelope, 'export', cfg.exportEffort),
+      };
     },
     close() {
       pool.closeAll();

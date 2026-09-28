@@ -18,6 +18,11 @@ const KEYWORDS = {
   points_libres: /\b(comme tu veux|libre|à toi de voir|peu importe|choisis)\b/,
 };
 
+const DEMO_META = {
+  mode: 'démo', effort: '—',
+  usage: { model: 'démo (sans IA)', input: 0, output: 0, cacheRead: 0, cacheWrite: 0, contextWindow: null, costUsd: null, durationMs: 0 },
+};
+
 const PRIORITY = ['objectif', 'perimetre', 'critere_fin', 'contexte', 'contraintes', 'references', 'priorites', 'points_libres'];
 // Pour ranger une phrase, le thème le plus spécifique l'emporte.
 const SPECIFICITY = ['perimetre', 'critere_fin', 'references', 'points_libres', 'priorites', 'objectif', 'contraintes', 'contexte'];
@@ -89,10 +94,10 @@ export function createDemo() {
       }
       // Petit délai pour que la démo ressemble à un vrai aller-retour.
       await new Promise((r) => setTimeout(r, 350));
-      return { ops, grid, suggestions };
+      return { ops, grid, suggestions, meta: DEMO_META };
     },
     async export(session) {
-      return { prompt: draftExport(session) };
+      return { prompt: draftExport(session), meta: DEMO_META };
     },
   };
 }

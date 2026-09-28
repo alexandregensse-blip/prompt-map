@@ -59,6 +59,7 @@ export class ClaudeProcess {
   onLine(line) {
     let event;
     try { event = JSON.parse(line); } catch { return; }
+    if (event.type === 'system' && event.subtype === 'init' && event.model) this.model = event.model;
     if (event.type !== 'result' || !this.pending) return;
     const { resolve, reject, timer } = this.pending;
     this.pending = null;
@@ -108,6 +109,7 @@ function snapshotOf(session, result) {
     expectedOutline: toOutline(applyOps(session.map, result.ops).map),
     removedCount: session.map.removedByUser?.length || 0,
     dismissedCount: session.dismissed?.length || 0,
+    later: [...(session.later || [])],
   };
 }
 
@@ -187,6 +189,7 @@ export class ConversationPool {
         const event = await conv.proc.send(text);
         return {
           event,
+          model: conv.proc.model || null,
           commit: (result) => { conv.seen = snapshotOf(session, result); },
         };
       } catch (err) {

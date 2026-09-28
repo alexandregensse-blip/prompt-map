@@ -27,6 +27,8 @@ function newSession(demo = false) {
     hidden: [], // suggestions écartées ou déjà répondues : { id, text }
     segments: [],
     processedCount: 0,
+    later: [], // questions mises de côté : { id, text, kind, dimension, node }
+    usage: { tokens: 0, calls: 0, last: null }, // consommation Claude de la session
     demo,
   };
 }
@@ -36,7 +38,7 @@ function parseSession(raw) {
     const saved = JSON.parse(raw);
     if (saved?.map?.nodes?.[ROOT_ID] && Array.isArray(saved.segments)) {
       const hidden = (saved.hidden || []).map((h) => (typeof h === 'string' ? { id: h, text: '' } : h));
-      return { ...newSession(), ...saved, hidden };
+      return { ...newSession(), ...saved, hidden, later: saved.later || [], usage: saved.usage || { tokens: 0, calls: 0, last: null } };
     }
   } catch { /* entrée corrompue */ }
   return null;
@@ -279,6 +281,7 @@ async function runUpdate() {
     // Masque une suggestion déjà traitée seulement si c'est bien la même (id et texte).
     session.suggestions = res.suggestions.filter((s) => !session.hidden.some((h) => h.id === s.id && (!h.text || h.text === s.text)));
     session.processedCount = upto;
+    recordUsage(res.meta);
     save();
     renderMap(changes);
     renderSuggestions();
@@ -397,6 +400,7 @@ function buildCard(s) {
     <p class="sugg-text"></p>
     <div class="sugg-actions">
       <button type="button" class="answer">Répondre</button>
+      <button type="button" class="postpone" title="Mettre de côté : l'agent ne la repose pas, elle reste dans le prompt final">Plus tard</button>
       <button type="button" class="dismiss" title="Ne plus proposer">Ignorer</button>
       <span class="dim"></span>
     </div>
@@ -413,17 +417,105 @@ function buildCard(s) {
     save();
     renderSuggestions();
   });
+  card.querySelector('.postpone').addEventListener('click', () => {
+    session.later.push({ id: s.id, text: s.text, kind: s.kind, dimension: s.dimension, node: s.node });
+    session.hidden.push({ id: s.id, text: s.text });
+    session.suggestions = session.suggestions.filter((x) => x.id !== s.id);
+    if (answering?.id === s.id) setAnswering(null);
+    save();
+    renderSuggestions();
+  });
   card.addEventListener('mouseenter', () => mapView.setLinked(s.node || null));
   card.addEventListener('mouseleave', () => mapView.setLinked(null));
   return card;
+}
+
+// Pile des questions mises de côté : on y répond ou on les écarte quand on veut.
+let laterOpen = false;
+function renderLater() {
+  const items = session.later;
+  $('later').hidden = !items.length;
+  if (!items.length) { laterOpen = false; return; }
+  $('later-toggle').textContent = `${laterOpen ? '▾' : '▸'} Plus tard · ${items.length} question${items.length > 1 ? 's' : ''} mise${items.length > 1 ? 's' : ''} de côté`;
+  $('later-toggle').setAttribute('aria-expanded', String(laterOpen));
+  const list = $('later-list');
+  list.hidden = !laterOpen;
+  list.textContent = '';
+  for (const item of items) {
+    const li = document.createElement('li');
+    li.innerHTML = '<span></span><button type="button">Répondre</button><button type="button">Ignorer</button>';
+    li.querySelector('span').textContent = item.text;
+    const [answer, dismiss] = li.querySelectorAll('button');
+    answer.addEventListener('click', () => {
+      session.later = session.later.filter((x) => x.id !== item.id);
+      save();
+      setAnswering(item);
+    });
+    dismiss.addEventListener('click', () => {
+      session.later = session.later.filter((x) => x.id !== item.id);
+      session.dismissed.push(item.text);
+      save();
+      renderSuggestions();
+    });
+    list.append(li);
+  }
+}
+$('later-toggle').addEventListener('click', () => { laterOpen = !laterOpen; renderLater(); });
+
+// ---------- Consommation Claude, façon statusline ----------
+
+// « claude-opus-5-5 » → « Opus 5.5 » ; « [1m] » ou fenêtre d'un million → « 1M ».
+function modelName(id, window) {
+  if (!id) return 'Claude';
+  const m = /claude-([a-z]+)-(\d+)(?:-(\d+))?/i.exec(id);
+  const name = m ? `${m[1][0].toUpperCase()}${m[1].slice(1)} ${m[2]}${m[3] ? `.${m[3]}` : ''}` : id;
+  return /\[1m\]/i.test(id) || window >= 1000000 ? `${name} 1M` : name;
+}
+const hum = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
+const band = (pct) => (pct < 30 ? 'g' : pct < 50 ? 'y' : pct < 70 ? 'o' : 'r');
+
+function recordUsage(meta) {
+  if (!meta?.usage) return;
+  const u = meta.usage;
+  session.usage.tokens += u.input + u.output;
+  session.usage.calls += 1;
+  session.usage.last = meta;
+  renderUsage();
+}
+
+function renderUsage() {
+  const el = $('usage');
+  const last = session.usage?.last;
+  el.hidden = !last;
+  if (!last) return;
+  const u = last.usage;
+  if (last.mode === 'démo') {
+    el.innerHTML = '<b>Démo</b><span class="sep">|</span>sans IA, aucun token';
+    return;
+  }
+  const ctx = u.input + u.cacheRead + u.cacheWrite;
+  const pct = u.contextWindow ? (ctx / u.contextWindow) * 100 : null;
+  const esc = (t) => String(t).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  el.innerHTML = `<div><b>${esc(modelName(u.model, u.contextWindow))}</b> · effort ${esc(last.effort)} · ${esc(last.mode)}</div>`
+    + `<div>Ctx: <span class="${pct === null ? '' : band(pct)}">${hum(ctx)}${pct === null ? '' : ` (${pct.toFixed(1)}%)`}</span>`
+    + `<span class="sep">-</span>${hum(session.usage.tokens)} tokens<span class="sep">-</span><span class="g">${hum(u.cacheRead)}</span> cache`
+    + `${u.durationMs ? `<span class="sep">-</span>${(u.durationMs / 1000).toFixed(1)} s` : ''}</div>`;
+  el.title = [
+    `Modèle : ${u.model || '?'} · mode ${last.mode} · effort ${last.effort}`,
+    `Dernier appel : entrée ${u.input}, cache lu ${u.cacheRead}, cache écrit ${u.cacheWrite}, sortie ${u.output}`,
+    `Session : ${session.usage.calls} appel${session.usage.calls > 1 ? 's' : ''}, ${session.usage.tokens} tokens (entrée + sortie, hors cache)`,
+    u.costUsd !== null ? `Équivalent API du dernier appel : ${u.costUsd.toFixed(3)} $ (inclus dans l'abonnement)` : '',
+  ].filter(Boolean).join('\n');
 }
 
 // Rendu par clé : une question déjà affichée garde sa carte, seules les nouvelles s'animent.
 function renderSuggestions() {
   const box = $('suggestions');
   const list = session.suggestions;
-  // Le bandeau n'apparaît que lorsqu'il y a des questions.
-  $('questions').hidden = !list.length;
+  // Le bandeau n'apparaît que lorsqu'il y a des questions (ou des questions mises de côté).
+  $('questions').hidden = !list.length && !session.later.length;
+  $('suggestions').hidden = !list.length;
+  renderLater();
   const existing = new Map([...box.children].map((el) => [el.dataset.id, el]));
   list.forEach((s, i) => {
     let card = existing.get(s.id);
@@ -713,7 +805,8 @@ async function openExport({ draft = false, force = false } = {}) {
   $('export-text').hidden = true;
   $('export-loading').lastChild.textContent = draft || session.demo ? ' Assemblage du prompt…' : ' Claude rédige le prompt…';
   try {
-    const { prompt } = await api.export(session, { demo: session.demo, draft });
+    const { prompt, meta } = await api.export(session, { demo: session.demo, draft });
+    if (!draft) recordUsage(meta);
     $('export-text').value = prompt;
     $('export-text').hidden = false;
     if (!draft) {
@@ -889,6 +982,7 @@ document.addEventListener('click', (e) => {
 });
 
 function renderAll() {
+  renderUsage();
   renderMap({});
   renderSuggestions();
   renderGrid();

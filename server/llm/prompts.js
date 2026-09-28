@@ -58,6 +58,7 @@ Règles :
 - Priorité aux manques qui feraient dérailler Claude Code (objectif, périmètre, critère de fin), puis aux ambiguïtés et contradictions.
 - Une suggestion = une seule chose, 20 mots au plus, formulée pour qu'on y réponde à l'oral, en tutoyant.
 - Ne demande jamais ce qui a déjà été dit. Ne repropose pas une suggestion écartée ni une suggestion à laquelle il vient de répondre.
+- Les questions « mises de côté » restent ouvertes, mais l'utilisateur y répondra plus tard : ne les repose pas, ni sous une autre forme.
 - Si le dernier segment semble inachevé, l'utilisateur est en train de dérouler son idée : ne le noie pas, une suggestion au plus.
 - Rattache la suggestion à une dimension (clé de la grille) et, si pertinent, à un nœud (son id). Sinon, chaîne vide.
 
@@ -144,7 +145,7 @@ export function nextSuggestionId(suggestions = [], usedIds = []) {
 }
 
 export function buildUpdateMessage(session) {
-  const { map, grid, suggestions = [], dismissed = [], segments = [], processedCount = 0, usedSuggestionIds = [] } = session;
+  const { map, grid, suggestions = [], dismissed = [], segments = [], processedCount = 0, usedSuggestionIds = [], later = [] } = session;
   const parts = [];
 
   parts.push(`## Carte actuelle\n${toOutline(map)}`);
@@ -167,6 +168,9 @@ export function buildUpdateMessage(session) {
   if (dismissed.length) {
     parts.push(`## Suggestions écartées par l'utilisateur (ne pas reproposer)\n${dismissed.map((t) => `- ${t}`).join('\n')}`);
   }
+  if (later.length) {
+    parts.push(`## Questions mises de côté par l'utilisateur (ouvertes, ne pas reposer)\n${later.map((t) => `- ${t}`).join('\n')}`);
+  }
 
   const fmt = formatSegment;
   const done = segments.slice(0, processedCount);
@@ -180,7 +184,7 @@ export function buildUpdateMessage(session) {
 // Message suivant d'une conversation déjà ouverte : seulement ce qui a changé.
 // seen = ce que le modèle a déjà vu (voir claude-stream.js).
 export function buildDeltaMessage(session, seen) {
-  const { map, suggestions = [], dismissed = [], segments = [], usedSuggestionIds = [] } = session;
+  const { map, suggestions = [], dismissed = [], segments = [], usedSuggestionIds = [], later = [] } = session;
   const parts = [];
   const fmt = formatSegment;
   const fresh = segments.slice(seen.segmentKeys.length);
@@ -199,6 +203,10 @@ export function buildDeltaMessage(session, seen) {
   const newlyDismissed = dismissed.slice(seen.dismissedCount);
   if (newlyDismissed.length) {
     parts.push(`## Suggestions écartées par l'utilisateur (ne pas reproposer)\n${newlyDismissed.map((t) => `- ${t}`).join('\n')}`);
+  }
+  const newlyLater = later.filter((t) => !(seen.later || []).includes(t));
+  if (newlyLater.length) {
+    parts.push(`## Questions mises de côté par l'utilisateur (ouvertes, ne pas reposer)\n${newlyLater.map((t) => `- ${t}`).join('\n')}`);
   }
   parts.push(`## Suggestions affichées\n${suggestions.length
     ? suggestions.map((s) => `- [${s.id}] (${s.kind}${s.dimension ? `, ${s.dimension}` : ''}) ${s.text}`).join('\n')
@@ -232,15 +240,15 @@ Règles :
 - Réponds uniquement avec le prompt, sans commentaire autour.`;
 
 export function buildExportMessage(session) {
-  const { map, grid, segments = [], suggestions = [] } = session;
+  const { map, grid, segments = [], suggestions = [], later = [] } = session;
   return [
     `## Carte\n${toOutline(map)}`,
     `## Grille\n${DIMENSION_KEYS.map((k) => {
       const g = grid?.[k] || { status: 'missing', summary: '' };
       return `- ${k} : ${g.status}${g.summary ? ` — ${g.summary}` : ''}`;
     }).join('\n')}`,
-    `## Questions de l'agent restées sans réponse\n${suggestions.length
-      ? suggestions.map((s) => `- (${s.kind}) ${s.text}`).join('\n')
+    `## Questions de l'agent restées sans réponse\n${suggestions.length || later.length
+      ? [...suggestions.map((s) => `- (${s.kind}) ${s.text}`), ...later.map((t) => `- (mise de côté) ${t}`)].join('\n')
       : '(aucune)'}`,
     `## Transcription\n${segments.map(formatSegment).join('\n') || '(vide)'}`,
     'Rédige le prompt de tâche final.',

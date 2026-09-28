@@ -35,6 +35,10 @@
     <section class="canvas" id="canvas">
       <div class="questions" id="questions" hidden>
         <div class="suggestions" id="suggestions"></div>
+        <div class="later" id="later" hidden>
+          <button type="button" class="later-toggle" id="later-toggle" aria-expanded="false"></button>
+          <ul class="later-list" id="later-list" hidden></ul>
+        </div>
       </div>
       <div class="map-area" id="map-area">
         <svg id="map" class="map" aria-label="Carte heuristique">
@@ -121,6 +125,7 @@
         <h2>Transcription</h2>
         <ol class="transcript" id="transcript"></ol>
       </section>
+      <footer class="usage" id="usage" hidden></footer>
     </aside>
   </main>
 

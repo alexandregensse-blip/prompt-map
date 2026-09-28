@@ -154,6 +154,14 @@ Claude, il ne faut pas l'exposer à tout le réseau.
   *Nouvelle* en démarre une autre sans rien effacer ; *Sessions* liste les précédentes pour
   les rouvrir ou les supprimer. Le dernier prompt généré est conservé avec sa session.
 - Pendant une mise à jour, la pastille en haut affiche le temps écoulé.
+- **Plus tard** : sur une question, la met de côté. L'agent ne la repose pas, elle reste
+  dans la pile « Plus tard » (pour y répondre ou l'écarter) et dans les points non précisés
+  du prompt final.
+- **Consommation**, en bas du panneau, à la façon d'une statusline Claude Code : modèle,
+  effort, mode, `Ctx` (taille du contexte du dernier appel et part de la fenêtre, en
+  couleur), tokens de la session (entrée + sortie, hors cache), cache lu au dernier appel,
+  durée. Le détail (et l'équivalent API) est au survol. Le serveur note aussi chaque appel
+  dans son terminal.
 
 ## Configuration
 
@@ -221,7 +229,7 @@ session (localStorage) ─── état complet ▶ /api/export     ──▶ cla
 
 ## Tests
 
-`npm test` lance 60 tests (Node, sans dépendance, **sans appel à Claude**) : modèle de carte,
+`npm test` lance 64 tests (Node, sans dépendance, **sans appel à Claude**) : modèle de carte,
 disposition (aucun chevauchement), découpage audio et WAV, prompts et schéma, validation des
 réponses, chaîne CLI avec un faux binaire `claude` (appel ponctuel et conversation gardée
 ouverte : nouveautés seules, plantage et reprise, limite de longueur), mode démo, serveur HTTP (dont un faux

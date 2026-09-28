@@ -18,7 +18,18 @@ const log = (input) => {
   if (process.env.FAKE_CLAUDE_LOG) appendFileSync(process.env.FAKE_CLAUDE_LOG, `${JSON.stringify({ pid: process.pid, stream, args, input })}\n`);
 };
 
+const USAGE = {
+  usage: { input_tokens: 120, output_tokens: 80, cache_read_input_tokens: 3000, cache_creation_input_tokens: 40 },
+  total_cost_usd: 0.012,
+  duration_ms: 1500,
+  modelUsage: { 'claude-fake-1': { inputTokens: 120, outputTokens: 80, cacheReadInputTokens: 3000, cacheCreationInputTokens: 40, contextWindow: 200000 } },
+};
+
 function respond(input) {
+  return { ...USAGE, ...answer(input) };
+}
+
+function answer(input) {
   if (input.includes('Rédige le prompt de tâche final')) {
     return { type: 'result', subtype: 'success', is_error: false, result: '```markdown\n# Prompt final\n\n## Objectif\nTest.\n```' };
   }
@@ -35,7 +46,7 @@ function respond(input) {
 
 if (stream) {
   // Mode flux : un message utilisateur par ligne, un événement « result » par message.
-  console.log(JSON.stringify({ type: 'system', subtype: 'init', session_id: 'fake' }));
+  console.log(JSON.stringify({ type: 'system', subtype: 'init', session_id: 'fake', model: 'claude-fake-1' }));
   const crashAfter = Number(process.env.FAKE_CLAUDE_CRASH_AFTER || Infinity);
   let count = 0;
   createInterface({ input: process.stdin }).on('line', (line) => {

@@ -66,6 +66,25 @@ test('un seul processus : état complet d’abord, puis seulement les nouveauté
   assert.equal(Object.keys(h.session.map.nodes).length, 4);
 });
 
+test('métadonnées : modèle annoncé par la CLI, tokens, effort, mode', async (t) => {
+  const h = harness(t, { cfg: { updateEffort: 'low' } });
+  const res = await h.say('Un.');
+  assert.equal(res.meta.mode, 'conversation');
+  assert.equal(res.meta.effort, 'low');
+  assert.equal(res.meta.usage.model, 'claude-fake-1');
+  assert.equal(res.meta.usage.cacheRead, 3000);
+});
+
+test('une question mise de côté n’est signalée qu’une fois', async (t) => {
+  const h = harness(t);
+  h.session.later = ['Quelle police ?'];
+  await h.say('Un.');
+  await h.say('Deux.');
+  const calls = h.calls();
+  assert.match(calls[0].input, /Quelle police \?/);
+  assert.doesNotMatch(calls[1].input, /Quelle police/);
+});
+
 test('une correction manuelle de la carte est transmise en entier', async (t) => {
   const h = harness(t);
   await h.say('Première phrase.');

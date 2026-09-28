@@ -27,7 +27,7 @@ function outline(map) {
   return lines.join('\n');
 }
 
-export function draftExport({ map, grid, suggestions = [] }) {
+export function draftExport({ map, grid, suggestions = [], later = [] }) {
   const out = [`# ${map.nodes[ROOT_ID].label}`];
   const open = [];
   for (const d of DIMENSIONS) {
@@ -38,7 +38,10 @@ export function draftExport({ map, grid, suggestions = [] }) {
   }
   const tree = outline(map);
   if (tree) out.push(`## Ce que j'ai décrit\n${tree}`);
-  const questions = suggestions.filter((s) => s.kind !== 'lead').map((s) => `- Question restée ouverte : ${s.text}`);
+  const questions = [
+    ...suggestions.filter((s) => s.kind !== 'lead').map((s) => s.text),
+    ...later,
+  ].map((t) => `- Question restée ouverte : ${t}`);
   if (open.length || questions.length) {
     out.push(`## Points non précisés\nSi l'un de ces points bloque, demande-moi avant de commencer. Sinon, choisis l'option la plus simple et signale-le à la fin.\n${[
       ...questions,

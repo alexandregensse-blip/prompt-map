@@ -48,6 +48,25 @@ test('phrases : réponse, approfondissement, correction et retrait', () => {
   assert.equal(formatSegment({ text: 'Puppeteer', retracted: true }, 4), '5. [phrase retirée ensuite] Puppeteer');
 });
 
+test('questions mises de côté : signalées à l’agent et reprises dans l’export', () => {
+  const s = session({ later: ['Quelle police pour le PDF ?'], segments: [{ text: 'A' }] });
+  assert.match(buildUpdateMessage(s), /mises de côté par l'utilisateur \(ouvertes, ne pas reposer\)\n- Quelle police pour le PDF \?/);
+  assert.match(buildExportMessage(s), /- \(mise de côté\) Quelle police pour le PDF \?/);
+  assert.match(draftExport({ map: createMap(), grid: emptyGrid(), later: ['Quelle police pour le PDF ?'] }), /Question restée ouverte : Quelle police pour le PDF \?/);
+});
+
+test('consommation lue dans la réponse de la CLI (usage, sinon modelUsage)', async () => {
+  const { usageOf } = await import('../server/llm/claude-cli.js');
+  const a = usageOf({ usage: { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 100, cache_creation_input_tokens: 2 }, total_cost_usd: 0.1, duration_ms: 900, modelUsage: { 'claude-x': {} } });
+  assert.deepEqual(a, { model: 'claude-x', input: 10, output: 5, cacheRead: 100, cacheWrite: 2, contextWindow: null, costUsd: 0.1, durationMs: 900 });
+  assert.equal(usageOf({ modelUsage: { 'claude-z': { contextWindow: 1000000 } } }).contextWindow, 1000000);
+  const b = usageOf({ modelUsage: { 'claude-y': { inputTokens: 3, outputTokens: 4, cacheReadInputTokens: 5, cacheCreationInputTokens: 6 } } });
+  assert.equal(b.model, 'claude-y');
+  assert.equal(b.cacheRead, 5);
+  const c = usageOf({}, 'sonnet');
+  assert.deepEqual([c.model, c.input, c.costUsd], ['sonnet', 0, null]);
+});
+
 test('prochain id de suggestion : jamais un id déjà utilisé', () => {
   assert.equal(nextSuggestionId([], []), 's1');
   assert.equal(nextSuggestionId([{ id: 's2' }], ['s7', 'grid-objectif', 'h-perimetre']), 's8');

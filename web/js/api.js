@@ -18,11 +18,14 @@ async function call(method, path, body, headers = {}) {
 
 // Ce que le serveur a besoin de savoir de la session.
 function payload(session) {
-  const { map, grid, suggestions, dismissed, segments, processedCount, hidden } = session;
+  const { map, grid, suggestions, dismissed, segments, processedCount, hidden, later = [] } = session;
   const usedSuggestionIds = hidden.map((h) => h.id);
   // Une question déjà répondue n'est plus « affichée » pour l'agent.
   const shown = suggestions.filter((s) => !s.answered);
-  return { sessionId: session.id, map, grid, suggestions: shown, dismissed, segments, processedCount, usedSuggestionIds };
+  return {
+    sessionId: session.id, map, grid, suggestions: shown, dismissed, segments, processedCount, usedSuggestionIds,
+    later: later.map((q) => q.text),
+  };
 }
 
 export const api = {

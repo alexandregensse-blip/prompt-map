@@ -450,6 +450,36 @@ button.chip:hover { border-color: var(--muted); }
 .transcript li.pending::after { content: "…"; animation: blink 1s infinite; }
 .transcript .none { color: var(--muted); }
 
+/* Questions mises de côté */
+.later { margin-top: 8px; }
+.later-toggle {
+  border: 0; background: transparent; padding: 2px 0; font-size: 12.5px; font-weight: 600; color: var(--muted);
+}
+.later-toggle:hover { color: var(--ink); }
+.later-list { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; }
+.later-list li {
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 10px; border-radius: 8px;
+  background: var(--surface); border: 1px dashed var(--border); font-size: 13px;
+}
+.later-list li span { flex: 1; min-width: 0; }
+.later-list button {
+  border: 1px solid var(--border); background: transparent; border-radius: 7px;
+  padding: 3px 8px; font-size: 12px; font-weight: 600; color: var(--ink-2);
+}
+.later-list button:hover { background: var(--surface-2); }
+
+/* Consommation, façon statusline */
+.usage {
+  flex: none; padding: 8px 18px 10px; border-top: 1px solid var(--border);
+  font-family: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  font-size: 11px; line-height: 1.6; color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.usage b { color: var(--ink-2); font-weight: 600; }
+.usage div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.usage .sep { opacity: .5; margin: 0 4px; }
+.usage .g { color: var(--ok); } .usage .y { color: #ca8a04; } .usage .o { color: #ea580c; } .usage .r { color: var(--danger); }
+
 /* ---------- Export ---------- */
 .export {
   width: min(780px, calc(100vw - 40px)); max-height: calc(100vh - 60px);
