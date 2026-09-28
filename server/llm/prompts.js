@@ -60,16 +60,22 @@ Règles :
 - Priorité aux manques qui feraient dérailler Claude Code (objectif, périmètre, critère de fin), puis aux ambiguïtés et contradictions.
 - Une suggestion = une seule chose, 20 mots au plus, formulée pour qu'on y réponde à l'oral, en tutoyant.
 - Ne demande jamais ce qui a déjà été dit. Ne repropose pas une suggestion écartée ni une suggestion à laquelle il vient de répondre.
+- L'utilisateur ne clique pas pour répondre : il parle. Quand le nouveau contenu répond à une question affichée (même sans le dire, même en partie), mets l'id de cette question dans "answered" et retire-la de la liste. Les segments marqués [réponse à …] y répondent explicitement.
 - Les questions « mises de côté » restent ouvertes, mais l'utilisateur y répondra plus tard : ne les repose pas, ni sous une autre forme.
 - Si le dernier segment semble inachevé, l'utilisateur est en train de dérouler son idée : ne le noie pas, une suggestion au plus.
 - Rattache la suggestion à une dimension (clé de la grille) et, si pertinent, à un nœud (son id). Sinon, chaîne vide.
 - "requested" vaut false pour tout ce qui n'est pas une recherche demandée.
+
+# 4. Les résultats de recherche
+
+Un « résultat de l'agent de recherche » arrive dans la transcription : c'est à toi de trier, l'utilisateur ne clique pas. Intègre à la carte ce qui sert vraiment la tâche, sous une branche « Références » (libellé court ; l'URL et l'intérêt dans "detail") ou, pour une idée, là où elle a sa place. Ignore le reste. Mets à jour la grille (dimension references notamment). Si un résultat ouvre un vrai choix pour l'utilisateur (deux bibliothèques possibles, par exemple), pose-lui la question.
 
 # Format de la réponse
 
 Un seul objet JSON, sans texte autour :
 {"ops": [ …opérations… ],
  "grid_changes": { "perimetre": {"status": "partial", "summary": "…"} },
+ "answered": ["s2"],
  "suggestions": null }
 ou, si les suggestions changent :
  "suggestions": [ {"id": "s4", "kind": "question", "text": "…", "dimension": "perimetre", "node": "n3", "requested": false} ]
@@ -78,7 +84,7 @@ Clés possibles de "grid_changes" : ${DIMENSION_KEYS.join(', ')}.`;
 export const UPDATE_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['ops', 'grid_changes', 'suggestions'],
+  required: ['ops', 'grid_changes', 'answered', 'suggestions'],
   properties: {
     ops: {
       type: 'array',
@@ -95,6 +101,7 @@ export const UPDATE_SCHEMA = {
         },
       },
     },
+    answered: { type: 'array', items: { type: 'string' } },
     grid_changes: {
       type: 'object',
       additionalProperties: false,
@@ -136,6 +143,12 @@ export const UPDATE_SCHEMA = {
 // Une phrase de la transcription, avec son contexte (réponse, correction, retrait…).
 export function formatSegment(s, i) {
   let tag = '';
+  if (s.research) {
+    const r = s.research;
+    const refs = (r.references || []).map((x, k) => `   ${k + 1}. ${x.title} — ${x.url} — ${x.why}`).join('\n');
+    const ideas = (r.ideas || []).map((x) => `   - ${x}`).join('\n');
+    return `${i + 1}. [résultat de l'agent de recherche pour « ${r.topic} »]\n${refs || '   (aucune référence)'}${ideas ? `\n   Idées :\n${ideas}` : ''}`;
+  }
   if (s.retracts !== undefined) return `${i + 1}. [l'utilisateur retire sa phrase « ${s.retracts} » : enlève de la carte ce qui ne venait que d'elle]`;
   if (s.corrects !== undefined) tag = `[l'utilisateur corrige la transcription de « ${s.corrects} », qui devient :] `;
   else if (s.answerTo) tag = `[réponse à « ${s.answerTo} »] `;

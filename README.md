@@ -121,6 +121,9 @@ Claude, il ne faut pas l'exposer à tout le réseau.
 
 ## Utilisation
 
+Le principe : **tu parles, tu réponds aux questions, et c'est tout**. L'agent range, trie,
+cherche et propose ; les boutons ne sont là que pour aider, jamais obligatoires.
+
 - **Parler** : bouton micro, ou <kbd>Espace</kbd> : appui maintenu pour parler tant qu'on
   tient la touche (relâcher envoie), appui bref pour le micro continu. **Écrire** : <kbd>/</kbd>
   puis <kbd>Entrée</kbd>.
@@ -130,11 +133,13 @@ Claude, il ne faut pas l'exposer à tout le réseau.
   la ralentir. Les deux serveurs adaptent leur fenêtre d'encodage à la durée de l'extrait
   (`audio_ctx`), ce qui les rend 2 à 3 fois plus rapides sur quelques secondes.
 - **Recherche web** : faite par un **agent séparé**, lancé en parallèle, avec les seuls outils
-  `WebSearch` et `WebFetch`, sans rien partager avec l'agent de travail. Elle se lance d'un
-  bouton *Chercher* : sur une question « Recherche » proposée par l'agent, ou sur un nœud.
-  Elle part aussi toute seule quand tu la demandes à voix haute (« va chercher… »). Les
-  références et idées trouvées s'ajoutent à la carte en un clic (branches « Références » et
-  « Pistes de la recherche ») ; l'agent de travail ne voit que ce que tu ajoutes.
+  `WebSearch` et `WebFetch`. Elle part toute seule quand tu la demandes à voix haute (« va
+  chercher des exemples de… ») ; l'agent peut aussi la proposer (question « Recherche », bouton
+  *Chercher*), et un nœud a un bouton *Chercher*. L'agent de recherche filtre et ne rapporte
+  qu'un résumé (3 à 5 références, quelques idées) ; l'agent de travail le reçoit, intègre à la
+  carte ce qui sert la tâche (lien dans le détail du nœud, cliquable) et te pose une question
+  seulement si un choix te revient. Rien à cliquer : les pages parcourues ne polluent pas la
+  conversation de travail.
 - **Paroles parasites** : le micro capte tout ; c'est l'agent qui écarte ce qui n'a rien à
   voir avec la tâche (autre conversation, télé, politesses).
 - **Carte** : molette ou pincement pour zoomer, glisser le fond pour se déplacer. Clic sur
@@ -147,10 +152,12 @@ Claude, il ne faut pas l'exposer à tout le réseau.
   et ✕ (retirer la phrase). L'agent remet la carte en accord. Après chaque phrase dite, la
   bulle montre un instant ce que Whisper a compris. Les termes de la carte sont transmis à
   Whisper comme vocabulaire, pour mieux reconnaître les noms techniques.
-- **Questions de l'agent** : en cartes au-dessus de la carte heuristique. *Répondre*
-  rattache ta prochaine phrase à la question : la carte passe à « Réponse notée ✓ », puis
-  s'envole vers le nœud que ta réponse a créé ou modifié. *Ignorer* l'écarte pour de bon.
-  Survoler une question met en évidence le nœud concerné.
+- **Questions de l'agent** : en cartes au-dessus de la carte heuristique. Tu y réponds en
+  parlant, sans cliquer : l'agent reconnaît qu'une phrase répond à une question, la carte
+  passe à « Réponse notée ✓ », puis s'envole vers le nœud que ta réponse a créé ou modifié.
+  *Répondre* (facultatif) rattache explicitement ta prochaine phrase à une question ;
+  *Plus tard* la met de côté ; *Ignorer* l'écarte pour de bon. Survoler une question met en
+  évidence le nœud concerné.
 - **Parole longue** : le texte est découpé aux respirations (au-delà de 6 s de parole) ou,
   sans aucune pause, toutes les 12 s au plus : il arrive au fil de l'eau. Si Whisper est
   assez rapide (3 fois plus vite que la parole), la bulle montre en plus une transcription
@@ -246,7 +253,7 @@ session (localStorage) ─── état complet ▶ /api/export     ──▶ cla
 
 ## Tests
 
-`npm test` lance 67 tests (Node, sans dépendance, **sans appel à Claude**) : modèle de carte,
+`npm test` lance 68 tests (Node, sans dépendance, **sans appel à Claude**) : modèle de carte,
 disposition (aucun chevauchement), découpage audio et WAV, prompts et schéma, validation des
 réponses, chaîne CLI avec un faux binaire `claude` (appel ponctuel et conversation gardée
 ouverte : nouveautés seules, plantage et reprise, limite de longueur), mode démo, serveur HTTP (dont un faux

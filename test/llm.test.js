@@ -67,6 +67,20 @@ test('consommation lue dans la réponse de la CLI (usage, sinon modelUsage)', as
   assert.deepEqual([c.model, c.input, c.costUsd], ['sonnet', 0, null]);
 });
 
+test('résultat de recherche : résumé filtré transmis à l’agent de travail', async () => {
+  const seg = { text: '', research: { topic: 'pdfkit', references: [{ title: 'pdfkit', url: 'https://pdfkit.org/', why: 'Doc officielle.' }], ideas: ['Polices embarquées.'] } };
+  const line = formatSegment(seg, 4);
+  assert.match(line, /^5\. \[résultat de l'agent de recherche pour « pdfkit »\]\n {3}1\. pdfkit — https:\/\/pdfkit\.org\/ — Doc officielle\.\n {3}Idées :\n {3}- Polices embarquées\./);
+  // En démo, « l'agent » range lui-même les références sous « Références ».
+  const demo = createDemo();
+  const res = await demo.update(session({ segments: [seg] }));
+  const { map } = applyOps(createMap(), res.ops);
+  const branch = Object.values(map.nodes).find((n) => n.label === 'Références');
+  assert.ok(branch);
+  assert.ok(Object.values(map.nodes).some((n) => n.parent === branch.id && n.detail.startsWith('https://pdfkit.org/')));
+  assert.equal(res.grid.references.status, 'covered');
+});
+
 test('prochain id de suggestion : jamais un id déjà utilisé', () => {
   assert.equal(nextSuggestionId([], []), 's1');
   assert.equal(nextSuggestionId([{ id: 's2' }], ['s7', 'grid-objectif', 'h-perimetre']), 's8');
@@ -74,7 +88,7 @@ test('prochain id de suggestion : jamais un id déjà utilisé', () => {
 
 test('schéma : toutes les dimensions, JSON sérialisable', () => {
   assert.deepEqual(Object.keys(UPDATE_SCHEMA.properties.grid_changes.properties), DIMENSION_KEYS);
-  assert.deepEqual(UPDATE_SCHEMA.required, ['ops', 'grid_changes', 'suggestions']);
+  assert.deepEqual(UPDATE_SCHEMA.required, ['ops', 'grid_changes', 'answered', 'suggestions']);
   assert.doesNotThrow(() => JSON.parse(JSON.stringify(UPDATE_SCHEMA)));
   for (const key of DIMENSION_KEYS) assert.ok(UPDATE_SYSTEM.includes(key), key);
 });
@@ -106,6 +120,7 @@ test('réponse en différences : grille fusionnée, suggestions inchangées (nul
   assert.equal(out.grid.contexte.status, 'covered', 'dimension non renvoyée : inchangée');
   assert.equal(out.grid.perimetre.summary, 'Pas le paiement.');
   assert.equal(out.suggestions, null);
+  assert.deepEqual(normalizeUpdate({ answered: ['s2', '', 3, ' s4 '], suggestions: null }, prev).answered, ['s2', 's4']);
   const search = normalizeUpdate({ grid_changes: {}, suggestions: [
     { id: 's9', kind: 'search', text: 'exemples pdfkit facture', dimension: 'references', node: '', requested: true },
     { id: 's10', kind: 'question', text: 'Q ?', dimension: '', node: '', requested: true },

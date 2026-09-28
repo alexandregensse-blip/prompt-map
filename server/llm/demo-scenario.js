@@ -100,7 +100,6 @@ export const DEMO_SCENARIO = [
     },
   },
   {
-    answer: 's2',
     text: 'Ce sera fini quand on pourra cliquer sur un bouton dans la page facture pour télécharger le PDF, et que les tests Jest passent.',
     response: {
       ops: [
@@ -117,6 +116,7 @@ export const DEMO_SCENARIO = [
         perimetre: g('partial', 'Ne pas toucher au module de paiement (fragile).'),
         critere_fin: g('covered', 'Le bouton télécharge le PDF et les tests Jest passent.'),
       },
+      answered: ['s2'], // l'agent reconnaît la réponse à « Comment tu sauras que c'est terminé ? »
       suggestions: [S5, S6, S7],
     },
   },

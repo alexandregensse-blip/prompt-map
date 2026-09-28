@@ -64,11 +64,24 @@ export function createDemo() {
       const fresh = (session.segments || []).slice(session.processedCount || 0);
       let grid = normalizeGrid(session.grid);
       let suggestions = null;
+      const answered = [];
       const ops = [];
       let seq = Number(peekNextId(session.map).slice(1));
       const idState = { next: () => `n${seq++}` };
 
       for (const seg of fresh) {
+        if (seg.research) {
+          // Comme le ferait l'agent : il garde les références utiles sous « Références ».
+          const existing = children(session.map, ROOT_ID).find((n) => n.label === 'Références')?.id
+            || ops.find((o) => o.op === 'add' && o.parent === ROOT_ID && o.label === 'Références')?.id;
+          const branch = existing || idState.next();
+          if (!existing) ops.push({ op: 'add', id: branch, parent: ROOT_ID, label: 'Références' });
+          for (const ref of (seg.research.references || []).slice(0, 2)) {
+            ops.push({ op: 'add', id: idState.next(), parent: branch, label: ref.title.slice(0, 60), detail: `${ref.url} — ${ref.why}` });
+          }
+          grid = normalizeGrid({ ...grid, references: { status: 'covered', summary: `Références trouvées pour « ${seg.research.topic} ».` } }, grid);
+          continue;
+        }
         if (seg.retracts !== undefined || !seg.text) continue;
         const step = scenario.get(normalizeSpeech(seg.text));
         if (step !== undefined) {
@@ -76,6 +89,7 @@ export function createDemo() {
           ops.push(...structuredClone(response.ops));
           grid = normalizeGrid(response.grid, grid);
           suggestions = structuredClone(response.suggestions);
+          answered.push(...(response.answered || []));
           seq = Math.max(seq, ...response.ops.filter((o) => /^n\d+$/.test(o.id)).map((o) => Number(o.id.slice(1)) + 1));
         } else {
           heuristic(session, seg.text, grid, ops, idState);
@@ -94,7 +108,7 @@ export function createDemo() {
       }
       // Petit délai pour que la démo ressemble à un vrai aller-retour.
       await new Promise((r) => setTimeout(r, 350));
-      return { ops, grid, suggestions, meta: DEMO_META };
+      return { ops, grid, answered, suggestions, meta: DEMO_META };
     },
     // Recherche simulée : des liens de recherche réels, clairement présentés comme des exemples.
     async research(session, topic) {

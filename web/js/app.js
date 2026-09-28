@@ -147,7 +147,12 @@ function positionToolbar() {
   toolbar.querySelector('[data-action="focus"]').hidden = id === ROOT_ID;
   const detail = session.map.nodes[id]?.detail || '';
   $('node-detail').hidden = !detail;
-  $('node-detail').textContent = detail;
+  // Les URL du détail (références trouvées par la recherche) deviennent des liens.
+  $('node-detail').replaceChildren(...detail.split(/(https?:\/\/[^\s—]+)/g).map((part) => {
+    if (!/^https?:\/\//.test(part)) return document.createTextNode(part);
+    const a = Object.assign(document.createElement('a'), { href: part, textContent: part, target: '_blank', rel: 'noopener noreferrer' });
+    return a;
+  }));
 }
 
 toolbar.addEventListener('click', (e) => {
@@ -260,7 +265,7 @@ function addSegment({ text, answerTo, focus }) {
 
 function onlyMinorNews() {
   const fresh = session.segments.slice(session.processedCount);
-  if (fresh.some((s) => s.answerTo || s.focus || s.corrects !== undefined || s.retracts !== undefined)) return false;
+  if (fresh.some((s) => s.answerTo || s.focus || s.research || s.corrects !== undefined || s.retracts !== undefined)) return false;
   const words = fresh.reduce((n, s) => n + s.text.split(/\s+/).filter(Boolean).length, 0);
   return words < 4;
 }
@@ -281,6 +286,17 @@ async function runUpdate() {
   try {
     const res = await api.update(current, current.demo);
     if (current !== session) return; // session remplacée entre-temps
+    // Réponses reconnues par l'agent : la carte passe à « ✓ », un temps, avant de s'envoler.
+    const recognized = session.suggestions.filter((s) => (res.answered || []).includes(s.id) && !s.answered);
+    if (recognized.length) {
+      for (const s of recognized) {
+        s.answered = true;
+        session.hidden.push({ id: s.id, text: s.text });
+      }
+      renderSuggestions();
+      await sleep(900);
+      if (current !== session) return;
+    }
     const flights = captureAnswered();
     const { map, changes, rejected } = applyOps(session.map, res.ops, { origin: 'ai' });
     if (rejected.length) console.info('Opérations écartées', rejected);
@@ -471,8 +487,16 @@ function launchResearch(topic) {
   save();
   renderSuggestions();
   api.research(session, clean).then((res) => {
-    Object.assign(job, { status: 'done', references: res.references, ideas: res.ideas });
-    if (owner === session) recordUsage(res.meta);
+    Object.assign(job, { status: 'done', references: res.references, ideas: res.ideas, doneAt: Date.now() });
+    if (owner !== session) return;
+    recordUsage(res.meta);
+    // Le résumé filtré part à l'agent de travail, qui décide quoi intégrer à la carte.
+    session.segments.push({
+      id: uid(), text: '', at: Date.now(),
+      research: { topic: clean, references: res.references, ideas: res.ideas },
+    });
+    renderTranscript();
+    scheduleUpdate(0);
   }).catch((err) => {
     Object.assign(job, { status: 'error', error: err.message });
   }).finally(() => {
@@ -480,17 +504,6 @@ function launchResearch(topic) {
     save();
     renderSuggestions();
   });
-}
-
-// Une référence ou une idée rejoint la carte, sous une branche dédiée créée au besoin.
-function addFromResearch(branchLabel, label, detail) {
-  let branch = Object.values(session.map.nodes).find((n) => n.parent === ROOT_ID && n.label === branchLabel);
-  if (!branch) {
-    const changes = userOps([{ op: 'add', parent: ROOT_ID, label: branchLabel }]);
-    branch = session.map.nodes[changes.added[0]];
-  }
-  const changes = userOps([{ op: 'add', parent: branch.id, label: label.slice(0, 80), detail: detail.slice(0, 240) }]);
-  if (changes.added[0]) mapView.flash(changes.added[0]);
 }
 
 let researchTimer = null;
@@ -513,57 +526,26 @@ function renderResearch() {
       state.classList.add('error');
       state.textContent = `Échec : ${job.error}`;
     } else {
-      state.textContent = `${job.references.length} référence${job.references.length > 1 ? 's' : ''}`;
+      const n = job.references.length;
+      state.textContent = n
+        ? `✓ ${n} référence${n > 1 ? 's' : ''} transmise${n > 1 ? 's' : ''} à l’agent`
+        : '✓ Rien de pertinent trouvé';
     }
     el.querySelector('.close').addEventListener('click', () => {
       session.research = session.research.filter((j) => j !== job);
       save();
       renderSuggestions();
     });
-    if (job.status === 'done') {
-      const ul = document.createElement('ul');
-      for (const ref of job.references) {
-        const li = document.createElement('li');
-        li.innerHTML = '<span><a target="_blank" rel="noopener noreferrer"></a><span class="host"></span></span><span class="why"></span><button type="button">Ajouter</button>';
-        const a = li.querySelector('a');
-        a.href = ref.url;
-        a.textContent = ref.title;
-        try { li.querySelector('.host').textContent = new URL(ref.url).hostname.replace(/^www\./, ''); } catch { /* lien déjà vérifié côté serveur */ }
-        li.querySelector('.why').textContent = ref.why;
-        const btn = li.querySelector('button');
-        const done = job.added.includes(ref.url);
-        btn.disabled = done;
-        btn.textContent = done ? '✓ Ajoutée' : 'Ajouter';
-        btn.title = 'Ajouter à la carte, sous « Références »';
-        btn.addEventListener('click', () => {
-          addFromResearch('Références', ref.title, `${ref.url} — ${ref.why}`);
-          job.added.push(ref.url);
-          save();
-          renderResearch();
-        });
-        ul.append(li);
-      }
-      for (const idea of job.ideas) {
-        const li = document.createElement('li');
-        li.className = 'idea';
-        li.innerHTML = '<span><b class="idea-tag">Idée</b> <span class="idea-text"></span></span><button type="button">Ajouter</button>';
-        li.querySelector('.idea-text').textContent = idea;
-        const btn = li.querySelector('button');
-        const done = job.added.includes(idea);
-        btn.disabled = done;
-        btn.textContent = done ? '✓ Ajoutée' : 'Ajouter';
-        btn.title = 'Ajouter à la carte, sous « Pistes de la recherche »';
-        btn.addEventListener('click', () => {
-          addFromResearch('Pistes de la recherche', idea.length > 60 ? `${idea.slice(0, 57)}…` : idea, idea);
-          job.added.push(idea);
-          save();
-          renderResearch();
-        });
-        ul.append(li);
-      }
-      el.append(ul);
-    }
     box.append(el);
+  }
+  // Une recherche aboutie s'efface d'elle-même : l'agent a pris le relais.
+  const finished = jobs.filter((j) => j.status === 'done');
+  if (finished.length) {
+    setTimeout(() => {
+      const before = session.research.length;
+      session.research = session.research.filter((j) => !(j.status === 'done' && Date.now() - (j.doneAt || 0) > 5500));
+      if (session.research.length !== before) { save(); renderSuggestions(); }
+    }, 6000);
   }
   // Temps écoulé des recherches en cours.
   if (jobs.some((j) => j.status === 'running')) {
@@ -706,7 +688,11 @@ function renderTranscript() {
     // Corrections et retraits s'affichent sur la phrase d'origine.
     if (s.corrects !== undefined || s.retracts !== undefined) continue;
     const li = document.createElement('li');
-    if (s.focus) {
+    if (s.research) {
+      const n = s.research.references.length;
+      li.className = 'focus';
+      li.textContent = `Recherche « ${s.research.topic} » : ${n} référence${n > 1 ? 's' : ''} transmise${n > 1 ? 's' : ''} à l’agent.`;
+    } else if (s.focus) {
       li.className = 'focus';
       li.textContent = `Tu as demandé d’approfondir « ${s.focus} ».`;
     } else {

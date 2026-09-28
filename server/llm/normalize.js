@@ -9,8 +9,10 @@ export function normalizeUpdate(raw, previousGrid) {
   // Grille : seulement les dimensions qui changent (grid_changes) ; « grid » complète acceptée aussi.
   const changes = data.grid_changes && typeof data.grid_changes === 'object' ? data.grid_changes : data.grid;
   const grid = normalizeGrid({ ...previousGrid, ...(changes && typeof changes === 'object' ? changes : {}) }, previousGrid);
+  // Questions auxquelles l'utilisateur vient de répondre en parlant (reconnues par l'agent).
+  const answered = (Array.isArray(data.answered) ? data.answered : []).filter((id) => typeof id === 'string' && id.trim()).map((id) => id.trim()).slice(0, 5);
   // null : les suggestions affichées restent les mêmes.
-  if (data.suggestions === null) return { ops, grid, suggestions: null };
+  if (data.suggestions === null) return { ops, grid, answered, suggestions: null };
   const seen = new Set();
   const suggestions = (Array.isArray(data.suggestions) ? data.suggestions : [])
     .filter((s) => s && typeof s.text === 'string' && s.text.trim())
@@ -24,7 +26,7 @@ export function normalizeUpdate(raw, previousGrid) {
     }))
     .filter((s) => !seen.has(s.id) && seen.add(s.id))
     .slice(0, 3);
-  return { ops, grid, suggestions };
+  return { ops, grid, answered, suggestions };
 }
 
 // Résultat d'une recherche : liens http(s) valides seulement, champs nettoyés.
