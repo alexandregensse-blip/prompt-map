@@ -107,7 +107,7 @@ test('CLI : chaîne complète avec un faux binaire claude', async (t) => {
   assert.equal(res.ops[0].label, 'Depuis le faux Claude');
   assert.equal(res.grid.objectif.status, 'partial');
   assert.equal(res.grid.contexte.status, 'missing');
-  const call = JSON.parse(readFileSync(log, 'utf8'));
+  const call = JSON.parse(readFileSync(log, 'utf8').trim().split('\n')[0]);
   assert.match(call.input, /## Nouveau depuis la dernière mise à jour\n1\. Bonjour/);
   assert.ok(call.args.includes('--json-schema'));
 

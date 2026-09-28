@@ -123,6 +123,7 @@ ou utiliser les variables d'environnement :
 | Variable | Défaut | Rôle |
 |---|---|---|
 | `PROMPTMAP_LLM` | `auto` | `auto`, `claude` ou `demo` |
+| `PROMPTMAP_CLAUDE_MODE` | `stream` | `stream` : une conversation Claude gardée ouverte par session · `oneshot` : un processus par mise à jour |
 | `PROMPTMAP_MODEL` | *(celui de ton Claude Code)* | modèle, ex. `opus`, `sonnet` |
 | `PROMPTMAP_UPDATE_EFFORT` | `low` | effort pour les mises à jour live (réactivité) |
 | `PROMPTMAP_EXPORT_EFFORT` | *(défaut du modèle)* | effort pour l'export final |
@@ -137,7 +138,7 @@ ou utiliser les variables d'environnement :
 navigateur (web/)                         serveur local (server/, Node sans dépendance)
 ─────────────────                         ─────────────────────────────────────────────
 micro → AudioWorklet → VAD → WAV ──────▶  /api/transcribe ──▶ whisper-server (local)
-carte SVG, suggestions, grille            /api/update     ──▶ claude -p (abonnement)
+carte SVG, suggestions, grille            /api/update     ──▶ claude -p en flux, gardé ouvert
 session (localStorage) ─── état complet ▶ /api/export     ──▶ claude -p, ou version brute
 ```
 
@@ -150,8 +151,19 @@ session (localStorage) ─── état complet ▶ /api/export     ──▶ cla
 - **Un seul appel par mise à jour** : carte, grille et suggestions dans la même réponse
   JSON, validée par schéma (`server/llm/prompts.js`). Les mises à jour sont regroupées :
   une seule en cours à la fois, la suivante part avec tout ce qui s'est dit entre-temps.
-- **Claude via la CLI Claude Code** (`claude -p`, sans outils, sans session, sans MCP) :
-  utilise l'abonnement déjà connecté, sans clé API ni coût à l'usage.
+- **Claude via la CLI Claude Code** (`claude -p`, sans outils, sans MCP) : utilise
+  l'abonnement déjà connecté, sans clé API ni coût à l'usage.
+- **Conversation gardée ouverte** (`server/llm/claude-stream.js`) : un processus
+  `claude -p --input-format stream-json` par session, lancé dès l'ouverture de la page.
+  Plus de démarrage de la CLI à chaque mise à jour, et le début de la conversation reste en
+  cache côté modèle. Le premier message donne l'état complet, les suivants seulement les
+  nouveautés (nouvelles phrases, corrections faites à la main sur la carte, suggestions
+  écartées).
+- **Pseudo-compact** : si le processus plante, dépasse 30 échanges ou reste inactif
+  15 min, on en relance un en lui donnant l'état actuel (carte, grille, suggestions,
+  transcription) en un seul message, sans rejouer l'historique. Pendant un plantage, la mise
+  à jour en cours passe par un appel ponctuel de secours ; après trois échecs de suite, le
+  mode ponctuel reste actif.
 
 ## Choix de ce premier jet (à valider)
 
@@ -166,9 +178,10 @@ session (localStorage) ─── état complet ▶ /api/export     ──▶ cla
 
 ## Tests
 
-`npm test` lance 45 tests (Node, sans dépendance, **sans appel à Claude**) : modèle de carte,
+`npm test` lance 53 tests (Node, sans dépendance, **sans appel à Claude**) : modèle de carte,
 disposition (aucun chevauchement), découpage audio et WAV, prompts et schéma, validation des
-réponses, chaîne CLI avec un faux binaire `claude`, mode démo, serveur HTTP (dont un faux
+réponses, chaîne CLI avec un faux binaire `claude` (appel ponctuel et conversation gardée
+ouverte : nouveautés seules, plantage et reprise, limite de longueur), mode démo, serveur HTTP (dont un faux
 serveur whisper.cpp et le refus des appels d'un autre site).
 
 Vérifié en plus pendant le développement (hors suite automatique) : parcours complet dans
@@ -182,8 +195,11 @@ whisper.cpp.
   `claude -p --output-format json --json-schema` est lue de deux façons (champ
   `structured_output`, sinon JSON extrait du texte), et si la CLI refuse `--json-schema`,
   prompt-map réessaie sans et garde ce mode. À confirmer au premier essai réel.
-- La latence d'une mise à jour dépend du démarrage de la CLI et du modèle (quelques
-  secondes). Leviers : `PROMPTMAP_MODEL=sonnet`, effort `low` (défaut).
+- Le mode flux (`--input-format stream-json`) n'a pas non plus été essayé avec le vrai
+  Claude. S'il échoue, le secours ponctuel prend le relais ; `PROMPTMAP_CLAUDE_MODE=oneshot`
+  le désactive.
+- Latence : le terminal du serveur affiche la durée de chaque mise à jour. Leviers :
+  `PROMPTMAP_MODEL=sonnet`, effort `low` (défaut).
 - Scripts Whisper vérifiés sur Linux (messages d'erreur) mais pas compilés ici ; Windows non
   pris en charge par les scripts (whisper.cpp s'y installe à la main).
 - Le mode démo sans IA range les phrases libres par mots-clés : c'est un aperçu, pas une analyse.

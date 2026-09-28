@@ -12,6 +12,7 @@ const DEFAULTS = {
   // auto : Claude Code si la CLI est installée, sinon démo.
   llm: 'auto',
   claudeBin: 'claude',
+  claudeMode: 'stream', // stream : une conversation gardée ouverte par session · oneshot : un processus par appel
   model: '', // vide = modèle par défaut de ton Claude Code
   updateEffort: 'low', // mises à jour fréquentes : on privilégie la réactivité
   exportEffort: '', // export : effort par défaut du modèle
@@ -27,6 +28,7 @@ const ENV = {
   host: ['PROMPTMAP_HOST', String],
   llm: ['PROMPTMAP_LLM', String],
   claudeBin: ['PROMPTMAP_CLAUDE_BIN', String],
+  claudeMode: ['PROMPTMAP_CLAUDE_MODE', String],
   model: ['PROMPTMAP_MODEL', String],
   updateEffort: ['PROMPTMAP_UPDATE_EFFORT', String],
   exportEffort: ['PROMPTMAP_EXPORT_EFFORT', String],

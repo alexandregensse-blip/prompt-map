@@ -7,14 +7,18 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { UPDATE_SYSTEM, UPDATE_SCHEMA, EXPORT_SYSTEM, buildUpdateMessage, buildExportMessage } from './prompts.js';
 import { normalizeUpdate, extractJson } from './normalize.js';
+import { ConversationPool } from './claude-stream.js';
 
 // Dossier vide : la CLI ne charge ni CLAUDE.md ni réglages d'un projet.
-const WORK_DIR = join(tmpdir(), 'prompt-map-claude');
+export const WORK_DIR = join(tmpdir(), 'prompt-map-claude');
 
-export function buildArgs({ system, schema, model, effort }) {
+// stream : processus gardé ouvert, messages JSON ligne par ligne sur l'entrée et la sortie.
+export function buildArgs({ system, schema, model, effort, stream = false }) {
   const args = [
     '-p',
-    '--output-format', 'json',
+    ...(stream
+      ? ['--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose']
+      : ['--output-format', 'json']),
     '--no-session-persistence',
     '--strict-mcp-config',
     '--disable-slash-commands',
@@ -80,33 +84,69 @@ export function versionOf(bin) {
   });
 }
 
-export function createClaudeCli(cfg, { log = console } = {}) {
+export function createClaudeCli(cfg, { log = console, limits } = {}) {
   const base = { bin: cfg.claudeBin, model: cfg.model, timeoutMs: cfg.timeoutMs };
   // Si la CLI refuse la sortie structurée (--json-schema), on bascule une fois pour toutes
   // sur du JSON lu dans le texte : le prompt système décrit le format de toute façon.
   let useSchema = true;
+  // Conversations persistantes, sauf si elles échouent trois fois de suite.
+  let streamFailures = 0;
+  const useStream = () => cfg.claudeMode !== 'oneshot' && streamFailures < 3;
+  const pool = new ConversationPool(() => ({
+    ...base,
+    effort: cfg.updateEffort,
+    system: UPDATE_SYSTEM,
+    schema: useSchema ? UPDATE_SCHEMA : null,
+  }), { log, limits });
+
+  const parse = (envelope, session) => {
+    const data = envelope.structured_output ?? extractJson(envelope.result);
+    if (!data) throw new Error('Réponse de Claude sans JSON exploitable');
+    return normalizeUpdate(data, session.grid);
+  };
+
+  // Appel ponctuel : un processus par mise à jour, avec l'état complet.
+  async function oneShot(session) {
+    const call = (schema) => runClaude({
+      ...base,
+      effort: cfg.updateEffort,
+      system: UPDATE_SYSTEM,
+      schema,
+      prompt: buildUpdateMessage(session),
+    });
+    let envelope;
+    try {
+      envelope = await call(useSchema ? UPDATE_SCHEMA : null);
+    } catch (err) {
+      if (!useSchema || /Impossible de lancer|n'a pas répondu|Not logged in|login/i.test(err.message)) throw err;
+      log.error?.(`[claude] échec avec --json-schema (${err.message}) : nouvel essai sans schéma`);
+      useSchema = false;
+      envelope = await call(null);
+    }
+    return parse(envelope, session);
+  }
+
   return {
     name: 'claude-cli',
+    warm(sessionId) {
+      if (useStream() && sessionId) pool.warm(sessionId);
+    },
     async update(session) {
-      const call = (schema) => runClaude({
-        ...base,
-        effort: cfg.updateEffort,
-        system: UPDATE_SYSTEM,
-        schema,
-        prompt: buildUpdateMessage(session),
-      });
-      let envelope;
-      try {
-        envelope = await call(useSchema ? UPDATE_SCHEMA : null);
-      } catch (err) {
-        if (!useSchema || /Impossible de lancer|n'a pas répondu|Not logged in|login/i.test(err.message)) throw err;
-        log.error?.(`[claude] échec avec --json-schema (${err.message}) : nouvel essai sans schéma`);
-        useSchema = false;
-        envelope = await call(null);
+      if (useStream() && session.sessionId) {
+        try {
+          const { event, commit } = await pool.send(session);
+          const result = parse(event, session);
+          commit(result);
+          streamFailures = 0;
+          return result;
+        } catch (err) {
+          pool.drop(session.sessionId);
+          streamFailures += 1;
+          if (/Impossible de lancer/.test(err.message)) throw err;
+          log.error?.(`[claude] conversation persistante en échec (${err.message}) : appel ponctuel en secours`);
+        }
       }
-      const data = envelope.structured_output ?? extractJson(envelope.result);
-      if (!data) throw new Error('Réponse de Claude sans JSON exploitable');
-      return normalizeUpdate(data, session.grid);
+      return oneShot(session);
     },
     async export(session) {
       const envelope = await runClaude({
@@ -118,6 +158,9 @@ export function createClaudeCli(cfg, { log = console } = {}) {
       const text = String(envelope.result || '').trim();
       if (!text) throw new Error('Claude a renvoyé un prompt vide');
       return { prompt: text.replace(/^```(?:markdown|md)?\n([\s\S]*)\n```$/, '$1') };
+    },
+    close() {
+      pool.closeAll();
     },
   };
 }

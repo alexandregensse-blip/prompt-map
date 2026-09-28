@@ -100,6 +100,11 @@ export function createApp(cfg, providers, { log = console } = {}) {
       log.info?.(`[update] ${pick(body).name} · ${result.ops.length} op(s) · ${Date.now() - started} ms`);
       return result;
     },
+    'POST /api/warmup': async (req) => {
+      const body = await readJson(req);
+      if (!body.demo && typeof body.sessionId === 'string') providers.main.warm?.(body.sessionId);
+      return { ok: true };
+    },
     'POST /api/export': async (req) => {
       const body = await readJson(req);
       const session = checkSession(body.session);

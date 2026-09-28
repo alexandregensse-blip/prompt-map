@@ -10,6 +10,10 @@ const dimensionLines = DIMENSIONS.map((d) => `- ${d.key} (${d.label}) : ${d.hint
 
 export const UPDATE_SYSTEM = `Tu es le moteur de prompt-map. Un utilisateur décrit à l'oral, librement, une tâche qu'il veut confier à Claude Code (un agent de développement logiciel). Tu reçois la transcription au fil de l'eau et tu maintiens trois choses : une carte heuristique, une grille d'analyse cachée, et quelques suggestions.
 
+# Déroulé
+
+Tu reçois d'abord l'état complet de la session. Les messages suivants ne contiennent que les nouveautés : tes opérations, ta grille et tes suggestions précédentes ont été appliquées telles quelles, sauf si le message indique que l'utilisateur a modifié la carte (la carte actuelle est alors redonnée en entier et fait foi). Chaque réponse suit le même format.
+
 # 1. La carte (visible)
 
 La carte reflète la pensée de l'utilisateur : ses thèmes, avec ses mots. Ce n'est pas un formulaire.
@@ -160,6 +164,40 @@ export function buildUpdateMessage(session) {
   const fresh = segments.slice(processedCount);
   parts.push(`## Transcription déjà prise en compte\n${done.length ? done.map(fmt).join('\n') : '(rien)'}`);
   parts.push(`## Nouveau depuis la dernière mise à jour\n${fresh.length ? fresh.map((s, i) => fmt(s, i + done.length)).join('\n') : '(rien)'}`);
+  parts.push('Mets à jour la carte, la grille et les suggestions.');
+  return parts.join('\n\n');
+}
+
+// Message suivant d'une conversation déjà ouverte : seulement ce qui a changé.
+// seen = ce que le modèle a déjà vu (voir claude-stream.js).
+export function buildDeltaMessage(session, seen) {
+  const { map, suggestions = [], dismissed = [], segments = [], usedSuggestionIds = [] } = session;
+  const parts = [];
+  const fmt = (s, i) => {
+    const tag = s.answerTo ? `[réponse à « ${s.answerTo} »] ` : s.focus ? `[l'utilisateur veut approfondir « ${s.focus} »] ` : '';
+    return `${i + 1}. ${tag}${s.text}`;
+  };
+  const fresh = segments.slice(seen.segmentKeys.length);
+  parts.push(`## Nouveau depuis la dernière mise à jour\n${fresh.length
+    ? fresh.map((s, i) => fmt(s, i + seen.segmentKeys.length)).join('\n')
+    : '(rien)'}`);
+
+  const outline = toOutline(map);
+  const removed = map.removedByUser?.slice(seen.removedCount) || [];
+  if (outline !== seen.expectedOutline || removed.length) {
+    parts.push(`## L'utilisateur a modifié la carte : voici la carte actuelle\n${outline}`);
+  }
+  if (removed.length) {
+    parts.push(`## Supprimés par l'utilisateur (ne pas recréer)\n${removed.map((l) => `- ${l}`).join('\n')}`);
+  }
+  const newlyDismissed = dismissed.slice(seen.dismissedCount);
+  if (newlyDismissed.length) {
+    parts.push(`## Suggestions écartées par l'utilisateur (ne pas reproposer)\n${newlyDismissed.map((t) => `- ${t}`).join('\n')}`);
+  }
+  parts.push(`## Suggestions affichées\n${suggestions.length
+    ? suggestions.map((s) => `- [${s.id}] (${s.kind}${s.dimension ? `, ${s.dimension}` : ''}) ${s.text}`).join('\n')
+    : '(aucune)'}`);
+  parts.push(`Prochain id libre : ${peekNextId(map)} · Prochain id de suggestion libre : ${nextSuggestionId(suggestions, usedSuggestionIds)}`);
   parts.push('Mets à jour la carte, la grille et les suggestions.');
   return parts.join('\n\n');
 }

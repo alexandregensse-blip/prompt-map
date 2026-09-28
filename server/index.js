@@ -68,6 +68,12 @@ server.listen(cfg.port, cfg.host, () => {
   console.log(`\n  prompt-map  →  ${url}\n  LLM         :  ${llm}\n  Whisper     :  ${cfg.whisperUrl}\n`);
   if (cfg.openWindow) openWindow(url);
 });
+const shutdown = () => {
+  providers.main.close?.();
+  process.exit(0);
+};
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);
 server.on('error', (err) => {
   console.error(err.code === 'EADDRINUSE' ? `Le port ${cfg.port} est déjà utilisé (PROMPTMAP_PORT pour en changer).` : err.message);
   process.exit(1);

@@ -527,6 +527,11 @@ function resetSession(demo = false) {
   mapView.reset();
   save();
   renderAll();
+  warmup();
+}
+
+function warmup() {
+  if (status.llm === 'claude-cli' && !session.demo) api.warmup(session);
 }
 
 $('new-btn').addEventListener('click', () => {
@@ -606,5 +611,5 @@ document.addEventListener('keydown', (e) => {
 
 setMicUi(false);
 renderAll();
-refreshStatus();
+refreshStatus().then(warmup);
 if (session.processedCount < session.segments.length) scheduleUpdate(300);

@@ -20,7 +20,7 @@ async function call(method, path, body, headers = {}) {
 function payload(session) {
   const { map, grid, suggestions, dismissed, segments, processedCount, hidden } = session;
   const usedSuggestionIds = hidden.map((h) => h.id);
-  return { map, grid, suggestions, dismissed, segments, processedCount, usedSuggestionIds };
+  return { sessionId: session.id, map, grid, suggestions, dismissed, segments, processedCount, usedSuggestionIds };
 }
 
 export const api = {
@@ -29,4 +29,6 @@ export const api = {
   update: (session, demo) => call('POST', '/api/update', { session: payload(session), demo }),
   export: (session, { demo, draft } = {}) => call('POST', '/api/export', { session: payload(session), demo, draft }),
   transcribe: (wav) => call('POST', '/api/transcribe', wav),
+  // Démarre la conversation Claude à l'avance : la première mise à jour n'attend pas la CLI.
+  warmup: (session) => call('POST', '/api/warmup', { sessionId: session.id, demo: session.demo }).catch(() => {}),
 };
