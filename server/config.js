@@ -21,6 +21,11 @@ const DEFAULTS = {
   whisperModel: '',
   language: 'fr',
   openWindow: true,
+  // Adresses supplémentaires acceptées (ex. IP d'un conteneur) ; localhost l'est toujours.
+  allowedHosts: [],
+  // HTTPS (certificat et clé PEM) : nécessaire au micro hors de localhost.
+  tlsCert: '',
+  tlsKey: '',
 };
 
 const ENV = {
@@ -37,6 +42,9 @@ const ENV = {
   whisperModel: ['PROMPTMAP_WHISPER_MODEL', String],
   language: ['PROMPTMAP_LANGUAGE', String],
   openWindow: ['PROMPTMAP_OPEN', (v) => !/^(0|false|no|non)$/i.test(v)],
+  allowedHosts: ['PROMPTMAP_ALLOWED_HOSTS', (v) => v.split(',').map((h) => h.trim()).filter(Boolean)],
+  tlsCert: ['PROMPTMAP_TLS_CERT', String],
+  tlsKey: ['PROMPTMAP_TLS_KEY', String],
 };
 
 export function loadConfig(env = process.env, file = join(ROOT_DIR, 'prompt-map.config.json')) {

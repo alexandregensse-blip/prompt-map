@@ -2,7 +2,7 @@
 // Point d'entrée : `npm start` (ou `node server/index.js`, `--demo` pour forcer la démo).
 
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { loadConfig } from './config.js';
@@ -58,10 +58,15 @@ function openWindow(url) {
   spawn(opener, [url], detached).on('error', () => {}).unref();
 }
 
+const tls = cfg.tlsCert && cfg.tlsKey
+  ? { cert: readFileSync(cfg.tlsCert), key: readFileSync(cfg.tlsKey) }
+  : null;
 const providers = await resolveProviders(cfg);
-const server = createApp(cfg, providers);
+const server = createApp(cfg, providers, { tls });
 server.listen(cfg.port, cfg.host, () => {
-  const url = `http://${cfg.host === '0.0.0.0' ? '127.0.0.1' : cfg.host}:${cfg.port}`;
+  const scheme = tls ? 'https' : 'http';
+  const shown = cfg.host === '0.0.0.0' ? cfg.allowedHosts[0] || '127.0.0.1' : cfg.host;
+  const url = `${scheme}://${shown}:${cfg.port}`;
   const llm = providers.main.name === 'claude-cli'
     ? `Claude Code ${providers.claudeVersion.replace(/\s*\(Claude Code\)/, '')}${cfg.model ? ` (modèle ${cfg.model})` : ''}`
     : 'démo (sans IA)';

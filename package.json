@@ -12,6 +12,7 @@
     "demo": "node server/index.js --demo",
     "test": "node --test test/*.test.js",
     "whisper:install": "bash scripts/install-whisper.sh",
-    "whisper": "bash scripts/run-whisper.sh"
+    "whisper": "bash scripts/run-whisper.sh",
+    "cert": "bash scripts/make-cert.sh"
   }
 }

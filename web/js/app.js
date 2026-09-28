@@ -546,6 +546,11 @@ async function toggleMic() {
     setMicUi(false);
     return;
   }
+  // Les navigateurs n'ouvrent le micro qu'en HTTPS ou sur localhost.
+  if (!window.isSecureContext || !navigator.mediaDevices) {
+    toast('Le micro exige HTTPS (ou localhost) : ouvre prompt-map en https://, voir le README. En attendant, tu peux écrire.', { error: true, ms: 8000 });
+    return;
+  }
   if (!status.whisper.reachable) {
     await refreshStatus();
     if (!status.whisper.reachable) {

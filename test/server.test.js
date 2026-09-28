@@ -89,6 +89,22 @@ test('refuse les appels venant d’un autre site', async () => {
   assert.equal(res.status, 403);
 });
 
+test('adresse supplémentaire autorisée (IP de conteneur), les autres refusées', async (t) => {
+  const cfg = loadConfig({ PROMPTMAP_ALLOWED_HOSTS: '172.17.0.5' }, '/nexiste/pas.json');
+  const demo = createDemo();
+  const server = createApp(cfg, { main: demo, demo, claudeVersion: null }, { log: quiet });
+  const port = await listen(server);
+  t.after(() => server.close());
+  const { request } = await import('node:http');
+  const get = (host, origin) => new Promise((resolve) => {
+    request({ host: '127.0.0.1', port, path: '/api/status', headers: { host, ...(origin ? { origin } : {}) } }, (res) => { res.resume(); resolve(res.statusCode); }).end();
+  });
+  assert.equal(await get(`172.17.0.5:${port}`), 200);
+  assert.equal(await get(`172.17.0.5:${port}`, `https://172.17.0.5:${port}`), 200);
+  assert.equal(await get(`evil.example:${port}`), 403);
+  assert.equal(await get(`172.17.0.5:${port}`, 'https://evil.example'), 403);
+});
+
 test('export : version brute sans IA', async () => {
   const res = await fetch(`${base}/api/export`, {
     method: 'POST',

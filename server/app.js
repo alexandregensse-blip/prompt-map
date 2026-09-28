@@ -2,6 +2,7 @@
 // Il est sans état : la session vit côté interface, ce qui facilitera le portage web.
 
 import { createServer } from 'node:http';
+import { createServer as createHttpsServer } from 'node:https';
 import { readFile } from 'node:fs/promises';
 import { extname, join, normalize, sep } from 'node:path';
 import { ROOT_DIR } from './config.js';
@@ -80,7 +81,7 @@ async function serveStatic(req, res) {
   }
 }
 
-export function createApp(cfg, providers, { log = console } = {}) {
+export function createApp(cfg, providers, { log = console, tls = null } = {}) {
   const pick = (body) => (body?.demo ? providers.demo : providers.main);
 
   const routes = {
@@ -127,11 +128,17 @@ export function createApp(cfg, providers, { log = console } = {}) {
 
   // Seule l'interface servie par ce serveur peut l'appeler (ni un autre site
   // ouvert dans le navigateur, ni un nom de domaine qui pointerait vers 127.0.0.1).
-  const localHost = (h) => /^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i.test(h || '');
-  const allowed = (req) => localHost(req.headers.host)
-    && (!req.headers.origin || localHost(req.headers.origin.replace(/^https?:\/\//, '')));
+  // Les adresses listées dans allowedHosts (ex. IP d'un conteneur) sont acceptées en plus.
+  const extra = new Set((cfg.allowedHosts || []).map((h) => h.toLowerCase()));
+  const hostOk = (h) => {
+    if (!h) return false;
+    if (/^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i.test(h)) return true;
+    return extra.has(h.toLowerCase().replace(/:\d+$/, ''));
+  };
+  const allowed = (req) => hostOk(req.headers.host)
+    && (!req.headers.origin || hostOk(req.headers.origin.replace(/^https?:\/\//, '')));
 
-  return createServer(async (req, res) => {
+  const handler = async (req, res) => {
     const path = new URL(req.url, 'http://x').pathname;
     if (!allowed(req)) return send(res, 403, { error: 'Origine refusée' });
     const handler = routes[`${req.method} ${path}`];
@@ -146,5 +153,6 @@ export function createApp(cfg, providers, { log = console } = {}) {
       log.error?.(`[${path}] ${err.message}`);
       send(res, status, { error: err.message });
     }
-  });
+  };
+  return tls ? createHttpsServer(tls, handler) : createServer(handler);
 }

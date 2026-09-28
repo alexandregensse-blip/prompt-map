@@ -104,6 +104,21 @@ Sans droits administrateur, tout s'installe en espace utilisateur :
 `ranlib` qui appellent `python -m ziglang cc` (resp. `c++`, `ar`, `ranlib`), placés en tête
 du `PATH`.
 
+### Depuis un autre poste (conteneur, machine du réseau)
+
+Le navigateur n'ouvre le micro qu'en HTTPS ou sur `localhost`. Pour servir prompt-map sur
+une IP (ici celle d'un conteneur Docker, `hostname -i`) :
+
+```bash
+npm run cert -- 172.17.0.5      # certificat auto-signé pour cette IP
+PROMPTMAP_HOST=0.0.0.0 PROMPTMAP_ALLOWED_HOSTS=172.17.0.5 \
+PROMPTMAP_TLS_CERT=.cert/cert.pem PROMPTMAP_TLS_KEY=.cert/key.pem npm start
+```
+
+Puis ouvrir `https://172.17.0.5:4317` et accepter une fois l'avertissement du certificat.
+Seules les adresses de `PROMPTMAP_ALLOWED_HOSTS` sont acceptées : prompt-map pilote ta CLI
+Claude, il ne faut pas l'exposer à tout le réseau.
+
 ## Utilisation
 
 - **Parler** : bouton micro ou <kbd>Espace</kbd>. Le texte est découpé aux pauses et
@@ -149,6 +164,9 @@ ou utiliser les variables d'environnement :
 | `PROMPTMAP_LANGUAGE` | `fr` | langue de transcription |
 | `PROMPTMAP_PORT` | `4317` | port de l'interface |
 | `PROMPTMAP_OPEN` | `1` | `0` pour ne pas ouvrir de fenêtre |
+| `PROMPTMAP_HOST` | `127.0.0.1` | adresse d'écoute (`0.0.0.0` pour un conteneur) |
+| `PROMPTMAP_ALLOWED_HOSTS` | *(aucune)* | adresses acceptées en plus de localhost, séparées par des virgules |
+| `PROMPTMAP_TLS_CERT` / `PROMPTMAP_TLS_KEY` | *(aucun)* | certificat et clé PEM pour servir en HTTPS (`npm run cert`) |
 
 ## Architecture
 
@@ -196,7 +214,7 @@ session (localStorage) ─── état complet ▶ /api/export     ──▶ cla
 
 ## Tests
 
-`npm test` lance 56 tests (Node, sans dépendance, **sans appel à Claude**) : modèle de carte,
+`npm test` lance 57 tests (Node, sans dépendance, **sans appel à Claude**) : modèle de carte,
 disposition (aucun chevauchement), découpage audio et WAV, prompts et schéma, validation des
 réponses, chaîne CLI avec un faux binaire `claude` (appel ponctuel et conversation gardée
 ouverte : nouveautés seules, plantage et reprise, limite de longueur), mode démo, serveur HTTP (dont un faux
