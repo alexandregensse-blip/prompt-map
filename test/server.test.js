@@ -121,7 +121,7 @@ test('transcription : WAV relayé à whisper.cpp, texte nettoyé', async () => {
   const res = await fetch(`${base}/api/transcribe`, {
     method: 'POST',
     headers: { 'content-type': 'audio/wav', 'x-whisper-prompt': encodeURIComponent('Vocabulaire : pdfkit, Express.') },
-    body: wav,
+    body: encodeWav(new Float32Array(16000 * 3)),
   });
   assert.deepEqual(await res.json(), { text: 'Bonjour, je voudrais un export PDF.' });
   const req = whisperRequests[0];
@@ -130,7 +130,8 @@ test('transcription : WAV relayé à whisper.cpp, texte nettoyé', async () => {
   assert.match(req.body, /name="language"\r\n\r\nfr/);
   assert.match(req.body, /name="response_format"\r\n\r\njson/);
   assert.match(req.body, /name="suppress_nst"\r\n\r\ntrue/);
-  assert.match(req.body, /name="audio_ctx"\r\n\r\n1\d\d\r\n/, 'fenêtre réduite pour 0,1 s d’audio');
+  assert.doesNotMatch(req.body, /name="audio_ctx"/, 'fenêtre complète pour le texte définitif');
+  assert.match(req.body, /name="temperature_inc"\r\n\r\n0\.0/);
   assert.match(Buffer.from(req.body, 'latin1').toString('utf8'), /name="prompt"\r\n\r\nVocabulaire : pdfkit, Express\./);
 });
 
@@ -145,6 +146,14 @@ test('fenêtre d’encodage Whisper ajustée à la durée', async () => {
   assert.equal(audioContext(8), 528);
   assert.equal(audioContext(30), 1500);
   assert.equal(audioContext(60), 1500);
+});
+
+test('garde-fous : trop de texte pour la durée, indice recopié', async () => {
+  const { plausible } = await import('../server/stt/whisper.js');
+  assert.equal(plausible('Bonjour, je voudrais un export PDF.', 2), 'Bonjour, je voudrais un export PDF.');
+  assert.equal(plausible('Une très longue phrase inventée qui ne peut pas tenir en une demi-seconde de parole.', 0.5), '');
+  assert.equal(plausible('Vocabulaire : pdfkit, Express.', 3), '');
+  assert.equal(plausible('Export PDF des factures, pdfkit', 3, 'Vocabulaire : Export PDF des factures, pdfkit, React.'), '');
 });
 
 test('nettoyage des hallucinations classiques de Whisper', () => {

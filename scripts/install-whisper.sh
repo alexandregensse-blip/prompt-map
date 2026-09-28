@@ -59,6 +59,17 @@ fi
 
 echo "$MODEL" > "$DIR/model"
 
+# Filtre de parole (Silero VAD, ~1 Mo) : whisper-server retire le bruit avant de transcrire,
+# ce qui évite les phrases inventées sur du silence ou des bruits.
+VAD_FILE="$DIR/models/ggml-silero-v6.2.0.bin"
+if [ -f "$VAD_FILE" ]; then
+  echo "✓ Filtre de parole déjà présent : $VAD_FILE"
+else
+  echo "→ Téléchargement du filtre de parole (Silero VAD)…"
+  curl -L --fail --progress-bar -o "$VAD_FILE.part" "https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v6.2.0.bin"
+  mv "$VAD_FILE.part" "$VAD_FILE"
+fi
+
 # Modèle minuscule pour le direct (les mots s'affichent pendant qu'on parle). WHISPER_LIVE=0 pour s'en passer.
 if [ "${WHISPER_LIVE:-1}" != "0" ]; then
   LIVE_FILE="$DIR/models/ggml-tiny-q5_1.bin"

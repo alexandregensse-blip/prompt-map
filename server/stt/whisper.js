@@ -62,9 +62,12 @@ export async function transcribe(wav, cfg, { prompt = '', live = false } = {}) {
     form.append('model', cfg.whisperModel || 'whisper-1');
   } else {
     form.append('temperature', '0.0');
-    // whisper.cpp : pas de jetons « non-parole » ([Musique], (Rires)…).
+    // whisper.cpp : pas de jetons « non-parole » ([Musique], (Rires)…), pas de nouvelles
+    // tentatives à température plus haute (elles inventent du texte et coûtent des secondes).
     form.append('suppress_nst', 'true');
-    form.append('audio_ctx', String(audioContext(wavSeconds(wav))));
+    form.append('temperature_inc', '0.0');
+    // Fenêtre réduite seulement pour le direct : elle favorise les hallucinations sur le texte définitif.
+    if (live) form.append('audio_ctx', String(audioContext(wavSeconds(wav))));
   }
   let res;
   try {
@@ -76,7 +79,17 @@ export async function transcribe(wav, cfg, { prompt = '', live = false } = {}) {
   }
   if (!res.ok) throw new Error(`Whisper a répondu ${res.status} ${res.statusText}`);
   const data = await res.json();
-  return cleanTranscript(data.text);
+  return plausible(cleanTranscript(data.text), wavSeconds(wav), prompt);
+}
+
+// Garde-fous contre le texte inventé : trop de texte pour la durée de l'audio, ou l'indice de
+// vocabulaire recopié tel quel.
+export function plausible(text, seconds, prompt = '') {
+  if (!text) return '';
+  if (seconds > 0 && text.length / Math.max(seconds, 0.5) > 32) return '';
+  if (/^vocabulaire\s*:/i.test(text)) return '';
+  if (prompt && prompt.length > 20 && prompt.includes(text) && text.length > 20) return '';
+  return text;
 }
 
 export async function whisperReachable(cfg, target = cfg.whisperUrl) {

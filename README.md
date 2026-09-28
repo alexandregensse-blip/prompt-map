@@ -127,11 +127,16 @@ cherche et propose ; les boutons ne sont là que pour aider, jamais obligatoires
 - **Parler** : bouton micro, ou <kbd>Espace</kbd> : appui maintenu pour parler tant qu'on
   tient la touche (relâcher envoie), appui bref pour le micro continu. **Écrire** : <kbd>/</kbd>
   puis <kbd>Entrée</kbd>.
+- **Anti-hallucinations** : `whisper-server` tourne avec un filtre de parole (Silero VAD,
+  installé par `whisper:install`) qui retire bruits et silences avant de transcrire, et sans
+  « nouvelles tentatives à température plus haute » (source de texte inventé et de lenteur).
+  L'indice de vocabulaire ne contient plus la phrase précédente (Whisper la recopiait), et un
+  texte trop long pour la durée de l'audio est écarté.
 - **Direct** : `npm run whisper` lance aussi un petit Whisper (`tiny`, 1 cœur) qui affiche
   les mots dans la bulle pendant qu'on parle ; le texte définitif vient du modèle principal.
   Le direct se met en pause pendant la transcription d'un morceau définitif, pour ne jamais
-  la ralentir. Les deux serveurs adaptent leur fenêtre d'encodage à la durée de l'extrait
-  (`audio_ctx`), ce qui les rend 2 à 3 fois plus rapides sur quelques secondes.
+  la ralentir, et adapte sa fenêtre d'encodage à la durée de l'extrait (`audio_ctx`) : 7 s
+  d'audio en 0,5 s sur un cœur.
 - **Recherche web** : faite par un **agent séparé**, lancé en parallèle, avec les seuls outils
   `WebSearch` et `WebFetch`. Elle part toute seule quand tu la demandes à voix haute (« va
   chercher des exemples de… ») ; l'agent peut aussi la proposer (question « Recherche », bouton
@@ -173,7 +178,8 @@ cherche et propose ; les boutons ne sont là que pour aider, jamais obligatoires
   reste en mode démo ; *Nouvelle* repart en mode normal.
 - **Sessions** : chaque session est gardée dans le navigateur (elle survit à un rechargement).
   *Nouvelle* en démarre une autre sans rien effacer ; *Sessions* liste les précédentes pour
-  les rouvrir ou les supprimer. Le dernier prompt généré est conservé avec sa session.
+  les rouvrir ou les supprimer, avec leur avancement (couverture du prompt). Le dernier prompt
+  généré est conservé avec sa session.
 - Pendant une mise à jour, la pastille en haut affiche le temps écoulé.
 - **Plus tard** : sur une question, la met de côté. L'agent ne la repose pas, elle reste
   dans la pile « Plus tard » (pour y répondre ou l'écarter) et dans les points non précisés
@@ -253,7 +259,7 @@ session (localStorage) ─── état complet ▶ /api/export     ──▶ cla
 
 ## Tests
 
-`npm test` lance 68 tests (Node, sans dépendance, **sans appel à Claude**) : modèle de carte,
+`npm test` lance 69 tests (Node, sans dépendance, **sans appel à Claude**) : modèle de carte,
 disposition (aucun chevauchement), découpage audio et WAV, prompts et schéma, validation des
 réponses, chaîne CLI avec un faux binaire `claude` (appel ponctuel et conversation gardée
 ouverte : nouveautés seules, plantage et reprise, limite de longueur), mode démo, serveur HTTP (dont un faux

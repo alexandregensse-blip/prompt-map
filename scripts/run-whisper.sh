@@ -23,6 +23,12 @@ if [ ! -f "$FILE" ]; then
   exit 1
 fi
 
+# Anti-hallucinations : filtre de parole (Silero) s'il est installé, et pas de nouvelles
+# tentatives à température plus haute (elles inventent du texte et prennent des secondes).
+EXTRA=(--no-fallback)
+VAD_FILE="$DIR/models/ggml-silero-v6.2.0.bin"
+if [ -f "$VAD_FILE" ]; then EXTRA+=(--vad --vad-model "$VAD_FILE"); fi
+
 THREADS="${WHISPER_THREADS:-$( (nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4) | awk '{print ($1 > 8) ? 8 : $1}')}"
 
 # Serveur du direct (tiny, 1 cœur) en arrière-plan, arrêté avec le principal.
@@ -30,10 +36,10 @@ LIVE_FILE="$DIR/models/ggml-tiny-q5_1.bin"
 LIVE_PORT="${WHISPER_LIVE_PORT:-8179}"
 if [ "${WHISPER_LIVE:-1}" != "0" ] && [ -f "$LIVE_FILE" ]; then
   echo "→ Whisper du direct (tiny, 1 thread) sur http://127.0.0.1:$LIVE_PORT/inference"
-  "$BIN" -m "$LIVE_FILE" -l "$LANGUAGE" -t 1 --host 127.0.0.1 --port "$LIVE_PORT" >/dev/null 2>&1 &
+  "$BIN" -m "$LIVE_FILE" -l "$LANGUAGE" -t 1 "${EXTRA[@]}" --host 127.0.0.1 --port "$LIVE_PORT" >/dev/null 2>&1 &
   LIVE_PID=$!
   trap 'kill $LIVE_PID 2>/dev/null' EXIT INT TERM
 fi
 
-echo "→ Whisper ($MODEL, $THREADS threads) sur http://127.0.0.1:$PORT/inference"
-"$BIN" -m "$FILE" -l "$LANGUAGE" -t "$THREADS" --host 127.0.0.1 --port "$PORT"
+echo "→ Whisper ($MODEL, $THREADS threads${VAD_FILE:+, filtre de parole}) sur http://127.0.0.1:$PORT/inference"
+"$BIN" -m "$FILE" -l "$LANGUAGE" -t "$THREADS" "${EXTRA[@]}" --host 127.0.0.1 --port "$PORT"

@@ -134,6 +134,11 @@ button.chip:hover { border-color: var(--muted); }
 }
 .session-title { font-weight: 600; font-size: 13px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .session-date { font-size: 11.5px; color: var(--muted); }
+.session-meta { display: flex; align-items: center; gap: 10px; width: 100%; }
+.session-cov { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.session-cov .bar { width: 56px; height: 4px; border-radius: 999px; background: var(--border); overflow: hidden; }
+.session-cov .bar span { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--accent), var(--ok)); }
+.session-cov .pct { min-width: 34px; text-align: right; }
 .session-row.current .session-date { color: var(--accent); font-weight: 600; }
 .session-delete { width: 28px; height: 28px; margin-right: 4px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); }
 .session-delete:hover { background: var(--surface); color: var(--danger); }
@@ -490,7 +495,9 @@ button.chip:hover { border-color: var(--muted); }
   font-variant-numeric: tabular-nums;
 }
 .usage b { color: var(--ink-2); font-weight: 600; }
-.usage div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.usage-line { display: flex; flex-wrap: wrap; column-gap: 10px; }
+.usage-line .item { white-space: nowrap; }
+.usage-line .item + .item::before { content: "·"; margin-right: 10px; opacity: .5; }
 .usage .sep { opacity: .5; margin: 0 4px; }
 .usage .g { color: var(--ok); } .usage .y { color: #ca8a04; } .usage .o { color: #ea580c; } .usage .r { color: var(--danger); }
 

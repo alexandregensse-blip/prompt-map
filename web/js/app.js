@@ -74,6 +74,7 @@ function save() {
         title: session.map.nodes[ROOT_ID].label,
         updatedAt: Date.now(),
         demo: session.demo,
+        coverage: Math.round(gridProgress(session.grid) * 100),
       };
       const index = readIndex().filter((e) => e.id !== session.id);
       localStorage.setItem(INDEX_KEY, JSON.stringify([entry, ...index].slice(0, 50)));
@@ -621,10 +622,15 @@ function renderUsage() {
   const ctx = u.input + u.cacheRead + u.cacheWrite;
   const pct = u.contextWindow ? (ctx / u.contextWindow) * 100 : null;
   const esc = (t) => String(t).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
-  el.innerHTML = `<div><b>${esc(modelName(u.model, u.contextWindow))}</b> · effort ${esc(last.effort)} · ${esc(last.mode)}</div>`
-    + `<div>Ctx: <span class="${pct === null ? '' : band(pct)}">${hum(ctx)}${pct === null ? '' : ` (${pct.toFixed(1)}%)`}</span>`
-    + `<span class="sep">-</span>${hum(session.usage.tokens)} tokens<span class="sep">-</span><span class="g">${hum(u.cacheRead)}</span> cache`
-    + `${u.durationMs ? `<span class="sep">-</span>${(u.durationMs / 1000).toFixed(1)} s` : ''}</div>`;
+  // Chaque élément reste entier ; la ligne passe à la ligne entre deux éléments si le panneau est étroit.
+  const parts = [
+    `Ctx: <span class="${pct === null ? '' : band(pct)}">${hum(ctx)}${pct === null ? '' : ` (${pct.toFixed(1)}%)`}</span>`,
+    `${hum(session.usage.tokens)} tokens`,
+    `<span class="g">${hum(u.cacheRead)}</span> cache`,
+    u.durationMs ? `${(u.durationMs / 1000).toFixed(1)} s` : '',
+  ].filter(Boolean);
+  el.innerHTML = `<div class="usage-line"><span class="item"><b>${esc(modelName(u.model, u.contextWindow))}</b></span><span class="item">effort ${esc(last.effort)}</span><span class="item">${esc(last.mode)}</span></div>`
+    + `<div class="usage-line">${parts.map((p) => `<span class="item">${p}</span>`).join('')}</div>`;
   el.title = [
     `Modèle : ${u.model || '?'} · mode ${last.mode} · effort ${last.effort}`,
     `Dernier appel : entrée ${u.input}, cache lu ${u.cacheRead}, cache écrit ${u.cacheWrite}, sortie ${u.output}`,
@@ -781,14 +787,14 @@ function retractSegment(seg) {
   toast('Phrase retirée : l’agent retire de la carte ce qui venait d’elle.');
 }
 
-// Indice pour Whisper : les termes de la carte et la dernière phrase dite.
+// Indice pour Whisper : quelques termes de la carte, sans la phrase précédente
+// (Whisper a tendance à recopier une phrase donnée en indice : texte inventé).
 function whisperPrompt() {
   const labels = Object.values(session.map.nodes)
-    .filter((n) => !(n.id === ROOT_ID && n.label === DEFAULT_TITLE))
-    .map((n) => n.label);
-  const vocab = [...new Set(labels)].join(', ').slice(0, 400);
-  const last = session.segments.filter((s) => s.text && s.retracts === undefined && !s.focus).at(-1)?.text || '';
-  return [vocab && `Vocabulaire : ${vocab}.`, last].filter(Boolean).join(' ');
+    .filter((n) => n.id !== ROOT_ID)
+    .map((n) => n.label.replace(/[.…]+$/, ''));
+  const vocab = [...new Set(labels)].join(', ').slice(0, 200);
+  return vocab ? `Vocabulaire : ${vocab}.` : '';
 }
 
 // ---------- Saisie : texte et micro ----------
@@ -1078,9 +1084,15 @@ function renderSessionsMenu() {
   for (const entry of index) {
     const li = document.createElement('li');
     li.className = `session-row${entry.id === session.id ? ' current' : ''}`;
-    li.innerHTML = '<button type="button" class="session-open"><span class="session-title"></span><span class="session-date"></span></button><button type="button" class="session-delete" title="Supprimer cette session">✕</button>';
+    li.innerHTML = '<button type="button" class="session-open"><span class="session-title"></span><span class="session-meta"><span class="session-date"></span><span class="session-cov"><span class="bar"><span></span></span><span class="pct"></span></span></span></button><button type="button" class="session-delete" title="Supprimer cette session">✕</button>';
     li.querySelector('.session-title').textContent = entry.title + (entry.demo ? ' (démo)' : '');
     li.querySelector('.session-date').textContent = entry.id === session.id ? 'en cours' : fmt.format(entry.updatedAt);
+    // Avancement : couverture du prompt (la session en cours est lue en direct).
+    const coverage = entry.id === session.id ? Math.round(gridProgress(session.grid) * 100) : entry.coverage ?? null;
+    li.querySelector('.session-cov').hidden = coverage === null;
+    li.querySelector('.session-cov .bar span').style.width = `${coverage || 0}%`;
+    li.querySelector('.session-cov .pct').textContent = `${coverage} %`;
+    li.querySelector('.session-cov').title = 'Couverture du prompt';
     li.querySelector('.session-open').addEventListener('click', () => openSession(entry.id));
     li.querySelector('.session-delete').addEventListener('click', () => {
       deleteStored(entry.id);
