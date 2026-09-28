@@ -5,7 +5,11 @@ import { createMap, applyOps, nodeCount, ROOT_ID } from './shared/map-model.js';
 import { DIMENSIONS, emptyGrid, gridProgress, STATUS_LABELS } from './shared/grid.js';
 
 const $ = (id) => document.getElementById(id);
-const STORAGE_KEY = 'prompt-map:session';
+// Sessions gardées dans le navigateur : un index + une entrée par session.
+const LEGACY_KEY = 'prompt-map:session';
+const INDEX_KEY = 'prompt-map:sessions';
+const CURRENT_KEY = 'prompt-map:current';
+const sessionKey = (id) => `prompt-map:s:${id}`;
 const DEFAULT_TITLE = 'Ton idée';
 const KIND_LABELS = { question: 'Question', blind_spot: 'Angle mort', lead: 'Piste' };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -27,19 +31,56 @@ function newSession(demo = false) {
   };
 }
 
-function loadSession() {
+function parseSession(raw) {
   try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    const saved = JSON.parse(raw);
     if (saved?.map?.nodes?.[ROOT_ID] && Array.isArray(saved.segments)) {
       const hidden = (saved.hidden || []).map((h) => (typeof h === 'string' ? { id: h, text: '' } : h));
       return { ...newSession(), ...saved, hidden };
     }
-  } catch { /* stockage indisponible ou corrompu */ }
+  } catch { /* entrée corrompue */ }
+  return null;
+}
+
+function readIndex() {
+  try { return JSON.parse(localStorage.getItem(INDEX_KEY)) || []; } catch { return []; }
+}
+
+function loadSession(id) {
+  try {
+    const found = parseSession(localStorage.getItem(sessionKey(id || localStorage.getItem(CURRENT_KEY))));
+    if (found) return found;
+    // Ancienne sauvegarde (une seule session) : reprise telle quelle.
+    const legacy = parseSession(localStorage.getItem(LEGACY_KEY));
+    if (legacy && !id) return legacy;
+  } catch { /* stockage indisponible */ }
   return newSession();
 }
 
 function save() {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(session)); } catch { /* sans persistance */ }
+  try {
+    localStorage.setItem(sessionKey(session.id), JSON.stringify(session));
+    localStorage.setItem(CURRENT_KEY, session.id);
+    localStorage.removeItem(LEGACY_KEY);
+    // Une session n'entre dans l'historique qu'une fois qu'on y a dit quelque chose.
+    if (session.segments.length) {
+      const entry = {
+        id: session.id,
+        title: session.map.nodes[ROOT_ID].label,
+        updatedAt: Date.now(),
+        demo: session.demo,
+      };
+      const index = readIndex().filter((e) => e.id !== session.id);
+      localStorage.setItem(INDEX_KEY, JSON.stringify([entry, ...index].slice(0, 50)));
+    }
+  } catch { /* sans persistance */ }
+}
+
+function deleteStored(id) {
+  try {
+    localStorage.removeItem(sessionKey(id));
+    localStorage.setItem(INDEX_KEY, JSON.stringify(readIndex().filter((e) => e.id !== id)));
+  } catch { /* sans persistance */ }
 }
 
 let session = loadSession();
@@ -244,14 +285,24 @@ async function runUpdate() {
   if (session.processedCount < session.segments.length) scheduleUpdate(100);
 }
 
+let activityTimer = null;
 function showActivity(text, error = false) {
+  clearInterval(activityTimer);
   $('agent-activity').hidden = false;
   $('agent-activity').classList.toggle('error', error);
   $('agent-activity').querySelector('.spinner').hidden = error;
   $('agent-activity-text').textContent = text;
   $('llm-chip').classList.toggle('busy', !error);
+  if (error) return;
+  // Au-delà de 2 s, on affiche le temps écoulé.
+  const started = Date.now();
+  activityTimer = setInterval(() => {
+    const s = Math.round((Date.now() - started) / 1000);
+    if (s >= 2) $('agent-activity-text').textContent = `${text} ${s} s`;
+  }, 500);
 }
 function hideActivity() {
+  clearInterval(activityTimer);
   $('agent-activity').hidden = true;
   $('llm-chip').classList.remove('busy');
 }
@@ -527,12 +578,21 @@ $('empty-mic').addEventListener('click', toggleMic);
 // ---------- Export ----------
 
 const dialog = $('export-dialog');
-async function openExport({ draft = false } = {}) {
+async function openExport({ draft = false, force = false } = {}) {
   if (!session.segments.length) {
     toast('Dis ou écris d’abord quelque chose : il n’y a encore rien à exporter.');
     return;
   }
   if (!dialog.open) dialog.showModal();
+  // Rien n'a changé depuis le dernier prompt généré : on le remontre tel quel.
+  const last = session.lastExport;
+  if (!force && !draft && last && last.segments === session.segments.length && last.processed === session.processedCount) {
+    $('export-loading').hidden = true;
+    $('export-text').hidden = false;
+    $('export-text').value = last.prompt;
+    $('export-meta').textContent = `Prompt généré à ${new Date(last.at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })} · « Régénérer » pour une nouvelle version`;
+    return;
+  }
   const progress = gridProgress(session.grid);
   const missing = DIMENSIONS.filter((d) => ['missing', 'partial'].includes(session.grid[d.key]?.status));
   $('export-meta').textContent = `Couverture ${Math.round(progress * 100)} %${missing.length
@@ -545,6 +605,10 @@ async function openExport({ draft = false } = {}) {
     const { prompt } = await api.export(session, { demo: session.demo, draft });
     $('export-text').value = prompt;
     $('export-text').hidden = false;
+    if (!draft) {
+      session.lastExport = { prompt, at: Date.now(), segments: session.segments.length, processed: session.processedCount };
+      save();
+    }
   } catch (err) {
     toast(`${err.message}. Tu peux utiliser la version brute.`, { error: true });
     const res = await api.export(session, { draft: true }).catch(() => null);
@@ -556,7 +620,7 @@ async function openExport({ draft = false } = {}) {
 }
 
 $('export-btn').addEventListener('click', () => openExport());
-$('export-regen').addEventListener('click', () => openExport());
+$('export-regen').addEventListener('click', () => openExport({ force: true }));
 $('export-draft').addEventListener('click', () => openExport({ draft: true }));
 $('export-copy').addEventListener('click', async () => {
   try {
@@ -603,7 +667,6 @@ async function waitIdle() {
 }
 
 async function runDemo() {
-  if (session.segments.length && !confirm('Remplacer la session en cours par la démo ?')) return;
   let script;
   try {
     script = await api.demoScript();
@@ -655,8 +718,63 @@ function warmup() {
 }
 
 $('new-btn').addEventListener('click', () => {
-  if (session.segments.length && !confirm('Commencer une nouvelle session ? La carte actuelle sera effacée.')) return;
+  const kept = session.segments.length > 0;
   resetSession(false);
+  if (kept) toast('Nouvelle session. La précédente est dans « Sessions ».');
+});
+
+// ---------- Historique des sessions ----------
+
+const sessionsMenu = $('sessions-menu');
+function renderSessionsMenu() {
+  const list = $('sessions-list');
+  list.textContent = '';
+  const index = readIndex();
+  if (!index.length) {
+    const li = document.createElement('li');
+    li.className = 'none';
+    li.textContent = 'Aucune session enregistrée pour l’instant.';
+    list.append(li);
+    return;
+  }
+  const fmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  for (const entry of index) {
+    const li = document.createElement('li');
+    li.className = `session-row${entry.id === session.id ? ' current' : ''}`;
+    li.innerHTML = '<button type="button" class="session-open"><span class="session-title"></span><span class="session-date"></span></button><button type="button" class="session-delete" title="Supprimer cette session">✕</button>';
+    li.querySelector('.session-title').textContent = entry.title + (entry.demo ? ' (démo)' : '');
+    li.querySelector('.session-date').textContent = entry.id === session.id ? 'en cours' : fmt.format(entry.updatedAt);
+    li.querySelector('.session-open').addEventListener('click', () => openSession(entry.id));
+    li.querySelector('.session-delete').addEventListener('click', () => {
+      deleteStored(entry.id);
+      if (entry.id === session.id) resetSession(false);
+      renderSessionsMenu();
+    });
+    list.append(li);
+  }
+}
+
+function openSession(id) {
+  sessionsMenu.hidden = true;
+  if (id === session.id) return;
+  demoRunning = false;
+  session = loadSession(id);
+  pending = [];
+  setAnswering(null);
+  mapView.reset();
+  save();
+  renderAll();
+  warmup();
+  if (session.processedCount < session.segments.length) scheduleUpdate(300);
+}
+
+$('sessions-btn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  sessionsMenu.hidden = !sessionsMenu.hidden;
+  if (!sessionsMenu.hidden) renderSessionsMenu();
+});
+document.addEventListener('click', (e) => {
+  if (!sessionsMenu.hidden && !e.target.closest('#sessions-menu')) sessionsMenu.hidden = true;
 });
 
 function renderAll() {

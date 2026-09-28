@@ -18,6 +18,12 @@
       <button class="chip" id="stt-chip" type="button" title="Transcription locale">Whisper</button>
       <span class="chip" id="llm-chip" title="Moteur d'analyse">…</span>
     </div>
+    <div class="sessions">
+      <button class="btn ghost" id="sessions-btn" type="button" title="Sessions précédentes">Sessions</button>
+      <div class="sessions-menu" id="sessions-menu" hidden>
+        <ul class="sessions-list" id="sessions-list"></ul>
+      </div>
+    </div>
     <button class="btn ghost" id="new-btn" type="button" title="Nouvelle session">Nouvelle</button>
     <button class="btn primary" id="export-btn" type="button">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0 4-4m-4 4-4-4M5 17v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2"/></svg>

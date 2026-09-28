@@ -128,7 +128,10 @@ du `PATH`.
   instantanément.
 - **Voir la démo** (écran d'accueil) : rejoue un scénario complet sans IA. Une session de démo
   reste en mode démo ; *Nouvelle* repart en mode normal.
-- La session est sauvegardée dans le navigateur et survit à un rechargement.
+- **Sessions** : chaque session est gardée dans le navigateur (elle survit à un rechargement).
+  *Nouvelle* en démarre une autre sans rien effacer ; *Sessions* liste les précédentes pour
+  les rouvrir ou les supprimer. Le dernier prompt généré est conservé avec sa session.
+- Pendant une mise à jour, la pastille en haut affiche le temps écoulé.
 
 ## Configuration
 
