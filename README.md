@@ -290,3 +290,7 @@ injectée comme micro de Chromium, transcrite par `whisper-server` (~5 s par phr
   (à corriger avec ✎, ou laissé à Claude, qui corrige les mots manifestement mal entendus).
 - Le mode démo sans IA range les phrases libres par mots-clés : c'est un aperçu, pas une analyse.
 - Découpage audio par énergie : un bruit de fond fort et continu peut gêner la détection des pauses.
+
+## Auteur
+
+[Alexandre Gensse](https://agensse.com/), consultant IA : agents IA, automatisation et outils sur mesure.
