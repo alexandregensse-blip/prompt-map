@@ -119,6 +119,9 @@ User : « on peut ajouter ces fonctions je pense. »
       ses runs.
 4. Montrer le plan d'autodev au user : dans ses mots, sans noms de missions (R_ENTR_204), par exemple
    comme une branche de la carte.
+   1. User : « pourquoi prompt-map montrerait ce qu'autodev va faire ? on fait ce branchement
+      justement pour que le user n'ait pas a s'en preoccuper » → écarté : prompt-map ne montre pas
+      le plan d'autodev.
 5. Critère de fin et périmètre dits par le user : la phase Specify d'autodev doit les reprendre comme
    points explicites, pas les réécrire.
 6. Niveau de dépense : « fais-le vite / pas cher » à l'oral. Intake sait déjà lire un niveau (tier)
