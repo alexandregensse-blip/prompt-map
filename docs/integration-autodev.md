@@ -129,6 +129,12 @@ User : « on peut ajouter ces fonctions je pense. »
       demande est un changement d'objectif, toujours demandé au user (R_ASKS_104).
 6. Niveau de dépense : « fais-le vite / pas cher » à l'oral. Intake sait déjà lire un niveau (tier)
    cité.
+   1. User : « je crois pas que ce soit intake qui choissise le niveau, pour moi c'est de la
+      config. »
+   2. *Vérifié* (R_ENTR_111) : un run travaille au niveau qu'un passage cité de sa demande nomme,
+      sinon à celui de la configuration, sinon en standard. La configuration donne le niveau par
+      défaut, et une phrase de la demande peut le remplacer pour ce run. intake ne fait que repérer
+      le passage.
 7. Autodev sur une autre machine : le pilote sait déjà envoyer un message à une cible
    (`--target … --message`). prompt-map tourne en local avec le micro, autodev dans un conteneur ou
    en SSH.
