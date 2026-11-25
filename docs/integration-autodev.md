@@ -110,6 +110,8 @@ User : « on peut ajouter ces fonctions je pense. »
       sur un mot corrigé par l'agent compte comme *interprétée*, pas *explicite*.
 2. Classement opinion / directive ferme : autodev le fait à partir de la formulation du user. La
    parole spontanée est plus hésitante que l'écrit, d'où un risque de tout classer en opinions.
+   1. User : « si c'est important, prompt map demande. et autodev gere. si promptmap demande et que
+      c'est ferme, ya une citation dessus »
 3. Aller-retour : les questions d'autodev reviennent dans la même session prompt-map et sur la même
    carte, ce qui lie une session prompt-map à un ou plusieurs runs.
 4. Montrer le plan d'autodev au user : dans ses mots, sans noms de missions (R_ENTR_204), par exemple
