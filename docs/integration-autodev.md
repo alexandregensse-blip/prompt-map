@@ -104,6 +104,10 @@ User : « on peut ajouter ces fonctions je pense. »
 
 1. Erreurs de transcription : un point explicite cite la transcription. Si Whisper a mal entendu, la
    citation est fausse mais vérifiée. La transcription envoyée doit être celle corrigée (✎).
+   1. User : « le user ne fait rien du tout. promptmap reflechit deux secondes et corrige le
+      transcript en coherence avec le discours du user et le transcript corrige est envoye. »
+   2. Position (Claude) : garder la trace des mots corrigés par prompt-map ; une citation qui repose
+      sur un mot corrigé par l'agent compte comme *interprétée*, pas *explicite*.
 2. Classement opinion / directive ferme : autodev le fait à partir de la formulation du user. La
    parole spontanée est plus hésitante que l'écrit, d'où un risque de tout classer en opinions.
 3. Aller-retour : les questions d'autodev reviennent dans la même session prompt-map et sur la même
