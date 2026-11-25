@@ -99,3 +99,24 @@ User : « on peut ajouter ces fonctions je pense. »
 
 1. User : « pour l'usage interne on verra plus tard ; llm plan maker c'etait une idee que je ne
    developperais que plus tard, et promptmap pourra l'utiliser aussi je pense. »
+
+## 9. Points à discuter (proposés par Claude, 2026-11-25)
+
+1. Erreurs de transcription : un point explicite cite la transcription. Si Whisper a mal entendu, la
+   citation est fausse mais vérifiée. La transcription envoyée doit être celle corrigée (✎).
+2. Classement opinion / directive ferme : autodev le fait à partir de la formulation du user. La
+   parole spontanée est plus hésitante que l'écrit, d'où un risque de tout classer en opinions.
+3. Aller-retour : les questions d'autodev reviennent dans la même session prompt-map et sur la même
+   carte, ce qui lie une session prompt-map à un ou plusieurs runs.
+4. Montrer le plan d'autodev au user : dans ses mots, sans noms de missions (R_ENTR_204), par exemple
+   comme une branche de la carte.
+5. Critère de fin et périmètre dits par le user : la phase Specify d'autodev doit les reprendre comme
+   points explicites, pas les réécrire.
+6. Niveau de dépense : « fais-le vite / pas cher » à l'oral. Intake sait déjà lire un niveau (tier)
+   cité.
+7. Autodev sur une autre machine : le pilote sait déjà envoyer un message à une cible
+   (`--target … --message`). prompt-map tourne en local avec le micro, autodev dans un conteneur ou
+   en SSH.
+8. Export actuel « prompt Claude Code » : le garder à côté de la cible autodev, ou le remplacer.
+9. Tester le combo : le mode démo de prompt-map produit des messages fixes, qui peuvent servir de
+   scénario e2e côté autodev (fixtures `shop-py`).
