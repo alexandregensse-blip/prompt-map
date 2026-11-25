@@ -124,6 +124,9 @@ User : « on peut ajouter ces fonctions je pense. »
       le plan d'autodev.
 5. Critère de fin et périmètre dits par le user : la phase Specify d'autodev doit les reprendre comme
    points explicites, pas les réécrire.
+   1. User : « je comprends pas. c'est promptmap qui va prompt autodev, pourquoi tu poses cette
+      question ? » → retiré : autodev le couvre déjà, changer le périmètre ou le critère d'une
+      demande est un changement d'objectif, toujours demandé au user (R_ASKS_104).
 6. Niveau de dépense : « fais-le vite / pas cher » à l'oral. Intake sait déjà lire un niveau (tier)
    cité.
 7. Autodev sur une autre machine : le pilote sait déjà envoyer un message à une cible
