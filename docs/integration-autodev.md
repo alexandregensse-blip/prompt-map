@@ -114,6 +114,9 @@ User : « on peut ajouter ces fonctions je pense. »
       c'est ferme, ya une citation dessus »
 3. Aller-retour : les questions d'autodev reviennent dans la même session prompt-map et sur la même
    carte, ce qui lie une session prompt-map à un ou plusieurs runs.
+   1. Choisi par le user : « Dans la même session » — les questions et le rapport d'autodev
+      reviennent dans la session prompt-map d'origine, sur la même carte ; une session est liée à
+      ses runs.
 4. Montrer le plan d'autodev au user : dans ses mots, sans noms de missions (R_ENTR_204), par exemple
    comme une branche de la carte.
 5. Critère de fin et périmètre dits par le user : la phase Specify d'autodev doit les reprendre comme
