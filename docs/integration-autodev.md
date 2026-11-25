@@ -17,24 +17,32 @@ verbatim, entre guillemets.
 ## 2. Ce que prompt-map transmet
 
 1. User : « le plan aura un format standard json, on peut ajouter des champs. »
-2. Position (Claude) : la transcription accompagne le plan, dans le même message, pour que le tracker
-   puisse vérifier les passages cités.
-3. User : « on peut meme prevoir une classification des specs en fonction de si le point est
+2. User, précision : « j'ai pas dis que prompt map contenait le plan json de autodev. j'ai dis que
+   promptmap fait son plan de plusieurs runs autodev, et il transmet le besoin au format json prevu
+   dans le plan. »
+   → prompt-map fait **son propre plan** de plusieurs runs autodev ; pour chaque run, il transmet le
+   besoin au format JSON prévu dans ce plan. Ce n'est pas le plan d'autodev.
+3. User : « on envoie pas la transcription complete a autodev, on envoie juste les citations qui
+   permettent de decreter une demande en ferme vs souhaitee. »
+4. User : « j'ai pas dis que promptmap envoyait qu'un seul message. » → plusieurs messages possibles.
+5. Remarque (Claude) : sans la transcription, le tracker ne peut plus vérifier qu'une citation est
+   bien de toi ; il ne peut que la lire. Que la citation soit fidèle repose alors sur prompt-map.
+6. User : « on peut meme prevoir une classification des specs en fonction de si le point est
    explicite par le user, ou interprete, avec preuves cites. »
-   1. Position (Claude) : *explicite* = passages cités, vérifiés mécaniquement comme sous-chaînes de
-      la transcription ;
+   1. Position (Claude) : *explicite* = appuyé par des citations du user (vérification mécanique
+      contre la transcription caduque, cf. 2.3 et 2.5) ;
    2. *interprété* = traité comme une décision prise pour le user (DEC-2), donc listé dans le rapport
       et contestable.
-4. Ouvert : autodev utilise l'origine dans ses règles, ou se contente de l'afficher dans le plan et
+7. Ouvert : autodev utilise l'origine dans ses règles, ou se contente de l'afficher dans le plan et
    le rapport. User : « je ne sais pas encore. »
-5. User, autres parades : « prompt map change son langage pour etre moins categorique et preface le
+8. User, autres parades : « prompt map change son langage pour etre moins categorique et preface le
    plan par une intro qui dit que c'est la comprehension d'un agent llm du besoin du user, et autodev
    est moins strict sur les points de l'agent quand il est en interface avec promptmap. »
-6. Position (Claude) : le langage moins catégorique est un complément utile mais non vérifiable ;
+9. Position (Claude) : le langage moins catégorique est un complément utile mais non vérifiable ;
    une marque d'origine portée par le message plutôt qu'une intro en prose — user : « pourquoi
    pas. » ; pas de mode « autodev moins strict » réservé à prompt-map (deux jeux de règles, K4), la
    classification par origine donnant le même effet.
-7. User : « dans les prochaines versions, le planner est un type d'agent qui va etre lance plein de
+10. User : « dans les prochaines versions, le planner est un type d'agent qui va etre lance plein de
    fois, pas juste au debut du run. » → l'origine des points doit vivre dans l'état du run, pas
    seulement dans le premier brief.
 
@@ -55,8 +63,8 @@ verbatim, entre guillemets.
 
 1. User : « le user peut vouloir utiliser le combo pour coder un truc de zero, auquel cas promptmap
    devra preparer un plan multi-runs autodev, et le premier autodev n'a aucun element. »
-2. Position (Claude) : prompt-map produit une liste ordonnée de besoins avec leurs dépendances plutôt
-   qu'un plan en missions autodev (DEC-1, R_ENTR_204) ; autodev planifie chacun. Sur un projet vide,
+2. Le plan multi-runs est celui de prompt-map (cf. 2.2) : une suite de runs, chacun avec son besoin
+   au format JSON ; autodev planifie chaque run en ses missions (DEC-1, R_ENTR_204). Sur un projet vide,
    stack, contraintes et références redeviennent des questions.
 3. User, sur l'initialisation d'un dépôt vide : « je ne pense pas qu'on sache faire actuellement. »
    → prérequis de ce cas.
@@ -135,6 +143,8 @@ User : « on peut ajouter ces fonctions je pense. »
       sinon à celui de la configuration, sinon en standard. La configuration donne le niveau par
       défaut, et une phrase de la demande peut le remplacer pour ce run. intake ne fait que repérer
       le passage.
+   3. Conséquence de 2.3 : une phrase sur la dépense n'atteint autodev que si prompt-map la met
+      parmi les citations transmises.
 7. Autodev sur une autre machine : le pilote sait déjà envoyer un message à une cible
    (`--target … --message`). prompt-map tourne en local avec le micro, autodev dans un conteneur ou
    en SSH.
