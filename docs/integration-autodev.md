@@ -151,5 +151,8 @@ User : « on peut ajouter ces fonctions je pense. »
    1. Choisi par le user : « Via le pilote » — prompt-map parle toujours à l'autodev local (le
       pilote), qui relaie vers la cible ; prompt-map n'a pas à savoir où tourne autodev.
 8. Export actuel « prompt Claude Code » : le garder à côté de la cible autodev, ou le remplacer.
+   1. Choisi par le user : « Choix au début » — la cible (prompt Claude Code ou autodev) est
+      choisie en ouvrant la session, car elle change ce que prompt-map demande (grille réduite pour
+      autodev).
 9. Tester le combo : le mode démo de prompt-map produit des messages fixes, qui peuvent servir de
    scénario e2e côté autodev (fixtures `shop-py`).
