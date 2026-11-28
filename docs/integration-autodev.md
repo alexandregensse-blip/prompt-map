@@ -156,3 +156,6 @@ User : « on peut ajouter ces fonctions je pense. »
       autodev).
 9. Tester le combo : le mode démo de prompt-map produit des messages fixes, qui peuvent servir de
    scénario e2e côté autodev (fixtures `shop-py`).
+   1. Choisi par le user : option 1, « Messages enregistrés » — des messages types de prompt-map
+      (besoins JSON + citations), enregistrés une fois, sont rejoués dans les tests e2e d'autodev sur
+      `shop-py`, sans micro ni IA côté prompt-map.
